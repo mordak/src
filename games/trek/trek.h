@@ -36,18 +36,10 @@
 **  Global Declarations
 **
 **	Virtually all non-local variable declarations are made in this
-**	file.  Exceptions are those things which are initialized, which
-**	are defined in "externs.c", and things which are local to one
-**	program file.
+**	file and defined in "externs.c".
 **
 **	So far as I know, nothing in here must be preinitialized to
 **	zero.
-**
-**	You may have problems from the loader if you move this to a
-**	different machine.  These things actually get allocated in each
-**	source file, which UNIX allows; however, you may (on other
-**	systems) have to change everything in here to be "extern" and
-**	actually allocate stuff in "externs.c"
 */
 
 /*********************  GALAXY  **************************/
@@ -88,7 +80,7 @@ struct quad		/* definition for each quadrant */
 extern const char	*const Systemname[NINHAB];
 
 /* quadrant definition */
-struct quad	Quad[NQUADS][NQUADS];
+extern struct quad	Quad[NQUADS][NQUADS];
 
 /* defines for sector map  (below) */
 #define	EMPTY		'.'
@@ -101,7 +93,7 @@ struct quad	Quad[NQUADS][NQUADS];
 #define	HOLE		' '
 
 /* current sector map */
-char	Sect[NSECTS][NSECTS];
+extern char	Sect[NSECTS][NSECTS];
 
 
 /************************ DEVICES ******************************/
@@ -171,7 +163,8 @@ struct event
 
 #define	MAXEVENTS	25	/* max number of concurrently pending events */
 
-struct event	Event[MAXEVENTS];	/* dynamic event list; one entry per pending event */
+/* dynamic event list; one entry per pending event */
+extern struct event	Event[MAXEVENTS];
 
 /*****************************  KLINGONS  *******************************/
 
@@ -216,7 +209,7 @@ struct xy
 
 
 /* information regarding the state of the starship */
-struct
+struct ship
 {
 	double	warp;		/* warp factor */
 	double	warp2;		/* warp factor squared */
@@ -239,12 +232,14 @@ struct
 	const char	*shipname;	/* name of current starship */
 	char	ship;		/* current starship */
 	int	distressed;	/* number of distress calls */
-}	Ship;
+};
+extern struct ship Ship;
+
 
 /* sinsbad is set if SINS is working but not calibrated */
 
 /* game related information, mostly scoring */
-struct
+struct game
 {
 	int	killk;		/* number of klingons killed */
 	int	deaths;		/* number of deaths onboard Enterprise */
@@ -260,10 +255,11 @@ struct
 	char	snap;		/* set if snapshot taken */
 	char	helps;		/* number of help calls */
 	int	captives;	/* total number of captives taken */
-}	Game;
+};
+extern struct game Game;
 
 /* per move information */
-struct
+struct move
 {
 	char	free;		/* set if a move is free */
 	char	endgame;	/* end of game flag */
@@ -271,10 +267,11 @@ struct
 	char	newquad;	/* set if just entered this quadrant */
 	char	resting;	/* set if this move is a rest */
 	double	time;		/* time used this move */
-}	Move;
+};
+extern struct move Move;
 
 /* parametric information */
-struct
+struct param
 {
 	unsigned char	bases;	/* number of starbases */
 	char	klings;		/* number of klingons */
@@ -305,12 +302,13 @@ struct
 	int	klingcrew;	/* number of Klingons in a crew */
 	double	srndrprob;	/* surrender probability */
 	int	energylow;	/* low energy mark (cond YELLOW) */
-}	Param;
+};
+extern struct param Param;
 
 /* Sum of damage probabilities must add to 1000 */
 
 /* other information kept in a snapshot */
-struct
+struct now
 {
 	unsigned char	bases;	/* number of starbases */
 	char	klings;		/* number of klingons */
@@ -320,10 +318,11 @@ struct
 	char	distressed;	/* number of currently distressed quadrants */
 	struct event	*eventptr[NEVENTS];	/* pointer to event structs */
 	struct xy	base[MAXBASES];		/* locations of starbases */
-}	Now;
+};
+extern struct now Now;
 
 /* Other stuff, not dumped in a snapshot */
-struct
+struct etc
 {
 	struct kling	klingon[MAXKLQUAD];	/* sorted Klingon list */
 	short		nkling;			/* number of Klingons in this sector */
@@ -331,7 +330,8 @@ struct
 	struct xy	starbase;	/* starbase in current quadrant */
 	char		snapshot[sizeof Quad + sizeof Event + sizeof Now];	/* snapshot for time warp */
 	char		statreport;		/* set to get a status report on a srscan */
-}	Etc;
+};
+extern struct etc Etc;
 
 /*
  *	eventptr is a pointer to the event[] entry of the last
