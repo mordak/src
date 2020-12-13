@@ -72,15 +72,12 @@
 #define	XLIM	4	/* define minimum required space around a room */
 #define	YLIM	3
 boolean secret;		/* TRUE while making a vault: increase [XY]LIM */
-struct mkroom rooms[MAXNROFROOMS+1];
 int smeq[MAXNROFROOMS+1];
-coord doors[DOORMAX];
 int doorindex;
 struct rm zerorm;
 schar nxcor;
 boolean goldseen;
 int nroom;
-xchar xdnstair,xupstair,ydnstair,yupstair;
 
 /* Definitions used by makerooms() and addrs() */
 #define	MAXRS	50	/* max lth of temp rectangle table - arbitrary */
