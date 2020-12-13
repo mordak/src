@@ -4,6 +4,7 @@ PROG=	adventure
 SRCS=	main.c init.c done.c save.c subr.c vocab.c wizard.c io.c data.c crc.c
 MAN=	adventure.6
 CLEANFILES+=setup data.c
+CFLAGS+= -fcommon
 
 data.c: glorkz setup
 	./setup ${.CURDIR}/glorkz > data.c
