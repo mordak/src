@@ -52,9 +52,9 @@
  * input. This is done for performance.
  */
 
-#include "wp_locl.h"
 #include <openssl/crypto.h>
 #include <string.h>
+#include "wp_locl.h"
 
 int WHIRLPOOL_Init(WHIRLPOOL_CTX *c)
 	{
