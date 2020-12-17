@@ -60,6 +60,42 @@
 #include "dump.h"
 #include "pathnames.h"
 
+/* Globals from dump.h */
+int	mapsize;
+char	*usedinomap;
+char	*dumpdirmap;
+char	*dumpinomap;
+char	*disk;
+char	*tape;
+char	*dumpdates;
+char	*temp;
+char	*duid;
+char	lastlevel;
+char	level;
+int	uflag;
+int	diskfd;
+int	tapefd;
+int	pipeout;
+ino_t	curino;
+int	newtape;
+int	density;
+int64_t	tapesize;
+int64_t	tsize;
+int	unlimited;
+int64_t	asize;
+int	etapes;
+int	nonodump;
+int	notify;
+int64_t	blockswritten;
+int	tapeno;
+time_t	tstart_writing;
+long	xferrate;
+struct	fs *sblock;
+char	sblock_buf[MAXBSIZE];
+int	tp_bshift;
+union u_spcl u_spcl;
+
+
 int	notify = 0;	/* notify operator flag */
 int64_t	blockswritten = 0;	/* number of blocks written on current tape */
 int	tapeno = 0;	/* current tape number */

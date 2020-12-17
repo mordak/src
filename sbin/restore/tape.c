@@ -83,6 +83,10 @@ int		Bcvt;		/* Swap Bytes (for CCI or sun) */
 
 #define	FLUSHTAPEBUF()	blkcnt = ntrec + 1
 
+struct context curfile;
+union	u_spcl u_spcl;
+#define spcl u_spcl.s_spcl
+
 union u_ospcl {
 	char dummy[TP_BSIZE];
 	struct	s_ospcl {
