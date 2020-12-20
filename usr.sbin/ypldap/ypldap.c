@@ -54,6 +54,7 @@ void		 purge_config(struct env *);
 void		 reconfigure(struct env *);
 
 int		 pipe_main2client[2];
+enum ypldap_process ypldap_process;
 
 pid_t		 client_pid = 0;
 char		*conffile = YPLDAP_CONF_FILE;

@@ -47,10 +47,11 @@ struct ypldap_addr {
 };
 TAILQ_HEAD(ypldap_addr_list, ypldap_addr);
 
-enum {
+enum ypldap_process {
 	PROC_MAIN,
 	PROC_CLIENT
-} ypldap_process;
+};
+extern enum ypldap_process ypldap_process;
 
 static const char * const log_procnames[] = {
 	"parent",
