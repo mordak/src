@@ -363,7 +363,8 @@ enum ldpd_process {
 	PROC_MAIN,
 	PROC_LDP_ENGINE,
 	PROC_LDE_ENGINE
-} ldpd_process;
+};
+extern enum ldpd_process ldpd_process;
 
 static const char * const log_procnames[] = {
 	"parent",

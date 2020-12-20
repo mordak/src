@@ -270,7 +270,7 @@ struct tcp_conn		*tcp_new(int, struct nbr *);
 void			 pending_conn_del(struct pending_conn *);
 struct pending_conn	*pending_conn_find(int, union ldpd_addr *);
 
-char	*pkt_ptr;	/* packet buffer */
+extern char	*pkt_ptr;	/* packet buffer */
 
 /* pfkey.c */
 int	pfkey_read(int, struct sadb_msg *);

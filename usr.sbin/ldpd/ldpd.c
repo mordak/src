@@ -36,6 +36,8 @@
 #include "lde.h"
 #include "log.h"
 
+enum ldpd_process ldpd_process;
+
 static void		 main_sig_handler(int, short, void *);
 static __dead void	 usage(void);
 static __dead void	 ldpd_shutdown(void);

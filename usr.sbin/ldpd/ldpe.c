@@ -50,6 +50,8 @@ static struct imsgev	*iev_main;
 static struct imsgev	*iev_lde;
 static struct event	 pfkey_ev;
 
+char   *pkt_ptr;
+
 /* ARGSUSED */
 static void
 ldpe_sig_handler(int sig, short event, void *bula)
