@@ -72,7 +72,7 @@ enum privsep_procid {
 	PROC_CONTROL,
 	PROC_OFCCONN,
 	PROC_MAX
-} privsep_process;
+};
 
 enum blockmodes {
 	BM_NORMAL,
