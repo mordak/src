@@ -120,7 +120,7 @@ int		build_cmd(char ***, char **, int);
 int		rcs_getopt(int, char **, const char *);
 int		rcs_main(int, char **);
 __dead void	rcs_usage(void);
-void		(*usage)(void);
+extern void		(*usage)(void);
 
 /* rlog.c */
 int		rlog_main(int, char **);

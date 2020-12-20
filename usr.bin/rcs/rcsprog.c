@@ -60,6 +60,7 @@ struct rcs_prog {
 	{ "ident",	ident_main,	ident_usage	},
 	{ "merge",	merge_main,	merge_usage	},
 };
+void   (*usage)(void);
 
 struct wklhead temp_files;
 
