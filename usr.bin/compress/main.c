@@ -50,6 +50,8 @@
 
 #define min(a,b) ((a) < (b)? (a) : (b))
 
+enum program_mode pmode;
+
 int cat, decomp, pipin, force, verbose, testmode, list, recurse, storename;
 extern char *__progname;
 

@@ -47,7 +47,7 @@ enum program_mode {
 	MODE_COMP,
 	MODE_DECOMP,
 	MODE_CAT
-} pmode;
+};
 
 /*
  * exit codes for compress
