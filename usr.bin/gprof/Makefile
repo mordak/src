@@ -8,7 +8,7 @@ TARGET_MACHINE_CPU?=	${MACHINE_CPU}
 PROG=	gprof
 SRCS=	gprof.c arcs.c dfn.c elf.c lookup.c ${TARGET_MACHINE_CPU}.c \
 	hertz.c printgprof.c printlist.c
-CFLAGS+= -I. -DMD_INCLUDE=\"${TARGET_MACHINE_CPU}.h\"
+CFLAGS+= -fcommon -I. -DMD_INCLUDE=\"${TARGET_MACHINE_CPU}.h\"
 
 beforeinstall:
 	${INSTALL} ${INSTALL_COPY} -o ${BINOWN} -g ${BINGRP} -m 444 \
