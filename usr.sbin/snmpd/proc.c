@@ -36,6 +36,8 @@
 
 #include "snmpd.h"
 
+enum privsep_procid privsep_process;
+
 void	 proc_exec(struct privsep *, struct privsep_proc *, unsigned int, int,
 	    int, char **);
 void	 proc_setup(struct privsep *, struct privsep_proc *, unsigned int);

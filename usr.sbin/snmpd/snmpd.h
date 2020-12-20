@@ -114,8 +114,6 @@ enum privsep_procid {
 	PROC_MAX
 };
 
-enum privsep_procid privsep_process;
-
 /* Attach the control socket to the following process */
 #define PROC_CONTROL	PROC_SNMPE
 
