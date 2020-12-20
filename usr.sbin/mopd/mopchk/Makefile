@@ -2,6 +2,7 @@
 
 PROG=	mopchk
 SRCS=	mopchk.c device.c version.c pf.c loop-bsd.c file.c
+CFLAGS+= -fcommon
 CFLAGS+= -I${.CURDIR} -I${.CURDIR}/.. -I${.CURDIR}/../common
 CLEANFILES= version.c version.h
 .PATH:	${.CURDIR}/.. ${.CURDIR}/../common 

@@ -4,6 +4,7 @@ PROG=	moptrace
 SRCS=	moptrace.c print.c cmp.c get.c mopdef.c nma.c device.c version.c pf.c \
 	loop-bsd.c dl.c rc.c
 MAN=	moptrace.1
+CFLAGS+= -fcommon
 CFLAGS+= -I${.CURDIR} -I${.CURDIR}/.. -I${.CURDIR}/../common
 CLEANFILES= version.c version.h
 .PATH:	${.CURDIR}/../common
