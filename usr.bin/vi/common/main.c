@@ -35,6 +35,8 @@ static void	 attach(GS *);
 #endif
 static int	 v_obsolete(char *[]);
 
+enum program_modes pmode;
+
 /*
  * editor --
  *	Main editor routine.

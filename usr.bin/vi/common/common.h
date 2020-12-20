@@ -66,7 +66,8 @@ typedef enum { LOCK_FAILED, LOCK_SUCCESS, LOCK_UNAVAIL } lockr_t;
 typedef enum { SEQ_ABBREV, SEQ_COMMAND, SEQ_INPUT } seq_t;
 
 /* Program modes. */
-enum { MODE_EX, MODE_VI, MODE_VIEW } pmode;
+enum program_modes { MODE_EX, MODE_VI, MODE_VIEW };
+extern enum program_modes pmode;
 
 /*
  * Local includes.
