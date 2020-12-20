@@ -5,6 +5,7 @@
 BINDIR=		/usr/sbin
 CHROOTDIR=	/var/nsd
 
+CFLAGS=	-fcommon
 XCFLAGS=	CC="${CC}" CFLAGS="${CFLAGS} ${COPTS}" LDFLAGS="${LDFLAGS}" \
 		YACC="/usr/bin/yacc"
 CONFIGURE_OPTS=	--prefix=/usr \
