@@ -34,6 +34,8 @@
 #include "header.h"
 #include "keynote.h"
 
+int sessid;
+
 void	verifyusage(void);
 
 void

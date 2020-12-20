@@ -33,7 +33,7 @@ extern int kvparse(void), kvlex(void);
 extern void kverror(char *);
 
 /* Variables */
-int sessid;
+extern int sessid;
 
 /* Defines */
 #define SEED_LEN        40
