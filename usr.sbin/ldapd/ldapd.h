@@ -230,7 +230,7 @@ struct conn {
 	struct buffertls	 buftls;
 	unsigned int		 s_flags;
 };
-TAILQ_HEAD(conn_list, conn)	 conn_list;
+TAILQ_HEAD(conn_list, conn);
 
 struct ssl {
 	SPLAY_ENTRY(ssl)	 ssl_nodes;
