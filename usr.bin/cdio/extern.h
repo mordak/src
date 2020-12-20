@@ -37,7 +37,8 @@ struct track_info {
 	char type;
 	int   speed; 
 };
-SLIST_HEAD(track_head, track_info) tracks;
+SLIST_HEAD(track_head, track_info);
+extern struct track_head tracks;
 
 /* Read/Write speed */
 #define DRIVE_SPEED_MAX		0xfffe

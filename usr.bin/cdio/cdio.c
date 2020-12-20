@@ -148,6 +148,8 @@ struct cmdtab {
 
 struct cd_toc_entry *toc_buffer;
 
+struct track_head tracks;
+
 char		*cdname;
 int		fd = -1;
 int		writeperm = 0;
