@@ -112,4 +112,5 @@ struct ifcount {
 	u_int64_t	ifc_co;			/* collisions */
 	int		ifc_flags;		/* up / down */
 	int		ifc_state;		/* link state */
-} sum;
+};
+extern struct ifcount sum;

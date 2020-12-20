@@ -42,6 +42,8 @@ struct ifstat {
 	char		ifs_flag;
 } *ifstats;
 
+struct ifcount sum;
+
 static	int nifs = 0;
 static int num_ifs = 0;
 static int show_bits = 0;
