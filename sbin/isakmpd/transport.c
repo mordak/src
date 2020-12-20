@@ -48,6 +48,8 @@
 
 LIST_HEAD(transport_method_list, transport_vtbl) transport_method_list;
 
+struct transport_list transport_list;
+
 /* Call the reinit function of the various transports.  */
 void
 transport_reinit(void)

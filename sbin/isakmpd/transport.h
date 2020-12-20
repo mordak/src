@@ -47,7 +47,8 @@
 
 struct transport;
 
-LIST_HEAD(transport_list, transport) transport_list;
+LIST_HEAD(transport_list, transport);
+extern struct transport_list transport_list;
 
 /* This describes a transport "method" like UDP or similar.  */
 struct transport_vtbl {
