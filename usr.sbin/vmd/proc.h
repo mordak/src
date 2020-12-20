@@ -88,7 +88,8 @@ enum privsep_procid {
 	PROC_VMM,
 	PROC_PRIV,
 	PROC_MAX,
-} privsep_process;
+};
+extern enum privsep_procid privsep_process;
 
 #define CONFIG_RELOAD		0x00
 #define CONFIG_VMS		0x01

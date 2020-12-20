@@ -48,6 +48,7 @@ uint32_t info_id;
 char info_name[VMM_MAX_NAME_LEN];
 enum actions info_action;
 unsigned int info_flags;
+struct imsgbuf *ibuf;
 
 /*
  * vm_start

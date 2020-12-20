@@ -71,7 +71,7 @@ struct ctl_command {
 	int			 has_pledge;
 };
 
-struct imsgbuf	*ibuf;
+extern struct imsgbuf	*ibuf;
 
 /* main.c */
 int	 vmmaction(struct parse_result *);
