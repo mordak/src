@@ -8,6 +8,7 @@ SRCS=	files.c gram.y hash.c main.c mkheaders.c mkioconf.c mkmakefile.c \
 	ukc.c misc.c ukcutil.c cmd.c
 SRCS+=  exec_elf.c
 
+CFLAGS+=-fcommon
 CFLAGS+=-I${.CURDIR} -I.
 
 LDADD=	-lkvm
