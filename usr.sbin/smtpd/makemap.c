@@ -53,7 +53,6 @@ static int	 make_aliases(DBT *, char *);
 static char	*conf_aliases(char *);
 static int	 dump_db(const char *, DBTYPE);
 
-struct smtpd	*env;
 char		*source;
 static int	 mode;
 
