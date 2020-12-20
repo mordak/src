@@ -168,11 +168,6 @@ struct control_sock {
 };
 TAILQ_HEAD(control_socks, control_sock);
 
-struct {
-	struct event	 ev;
-	int		 fd;
-} control_state;
-
 struct imsgev {
 	struct imsgbuf		 ibuf;
 	void			(*handler)(int, short, void *);
@@ -230,7 +225,8 @@ enum privsep_procid {
 	PROC_SERVER,
 	PROC_LOGGER,
 	PROC_MAX
-} privsep_process;
+};
+extern enum privsep_procid privsep_process;
 
 /* Attach the control socket to the following process */
 #define PROC_CONTROL	PROC_LOGGER
@@ -438,7 +434,6 @@ struct log_file {
 	uint32_t		log_id;
 	TAILQ_ENTRY(log_file)	log_entry;
 };
-TAILQ_HEAD(log_files, log_file) log_files;
 
 struct media_type {
 	char			 media_name[MEDIATYPE_NAMEMAX];

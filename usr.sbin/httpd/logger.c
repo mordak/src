@@ -30,6 +30,8 @@
 
 #include "httpd.h"
 
+TAILQ_HEAD(log_files, log_file) log_files;
+
 int		 logger_dispatch_parent(int, struct privsep_proc *,
 		    struct imsg *);
 int		 logger_dispatch_server(int, struct privsep_proc *,
