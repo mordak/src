@@ -13,6 +13,7 @@ CFLAGS+= -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+= -Wmissing-declarations
 CFLAGS+= -Wshadow -Wpointer-arith
 CFLAGS+= -Wsign-compare
+CFLAGS+= -fcommon
 YFLAGS=
 LDADD+=	-levent -lutil -lssl -lcrypto
 DPADD+= ${LIBEVENT} ${LIBUTIL} ${LIBSSL} ${LIBCRYPTO}
