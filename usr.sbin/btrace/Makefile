@@ -9,6 +9,7 @@ SRCS=		bt_parse.y btrace.c ksyms.c map.c printf.c
 SRCS+=		syscalls.c
 CFLAGS+=	-DPTRACE -DKTRACE -DACCOUNTING -DNFSCLIENT -DSYSVSHM -DSYSVSEM
 CFLAGS+=	-DSYSVMSG
+CFLAGS+=	-fcommon
 .PATH:		${.CURDIR}/../../sys/kern
 
 CFLAGS+=	-W -Wall -Wstrict-prototypes -Wno-unused -Wunused-variable
