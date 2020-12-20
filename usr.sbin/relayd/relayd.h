@@ -913,11 +913,6 @@ struct control_sock {
 };
 TAILQ_HEAD(control_socks, control_sock);
 
-struct {
-	struct event	 ev;
-	int		 fd;
-} control_state;
-
 struct imsgev {
 	struct imsgbuf		 ibuf;
 	void			(*handler)(int, short, void *);
@@ -1018,7 +1013,8 @@ enum privsep_procid {
 	PROC_PFE,
 	PROC_CA,
 	PROC_MAX
-} privsep_process;
+};
+extern enum privsep_procid privsep_process;
 
 /* Attach the control socket to the following process */
 #define PROC_CONTROL	PROC_PFE
