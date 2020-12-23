@@ -13,7 +13,7 @@ LDFLAGS+=	-nostdlib -T${.CURDIR}/../${LDSCRIPT} -Bsymbolic -shared
 
 COPTS+=		-DEFIBOOT -DFWRANDOM -DNEEDS_HEAP_H -I${.CURDIR}/..
 COPTS+=		-I${EFIDIR}/include -I${S}/stand/boot
-COPTS+=		-ffreestanding -std=gnu99
+COPTS+=		-fcommon -ffreestanding -std=gnu99
 COPTS+=		-fshort-wchar -fPIC -mno-red-zone
 .if ${SOFTRAID:L} == "yes"
 COPTS+=		-DSOFTRAID
