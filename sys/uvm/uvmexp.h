@@ -1,4 +1,4 @@
-/*	$OpenBSD: uvmexp.h,v 1.6 2020/12/01 13:56:22 mpi Exp $	*/
+/*	$OpenBSD: uvmexp.h,v 1.8 2020/12/28 14:01:23 mpi Exp $	*/
 
 #ifndef	_UVM_UVMEXP_
 #define	_UVM_UVMEXP_
@@ -42,6 +42,7 @@
  *
  *  Locks used to protect struct members in this file:
  *	I	immutable after creation
+ *	K	kernel lock
  *	F	uvm_lock_fpageq
  */
 struct uvmexp {
@@ -79,9 +80,9 @@ struct uvmexp {
 
 	/* swap */
 	int nswapdev;	/* number of configured swap devices in system */
-	int swpages;	/* number of PAGE_SIZE'ed swap pages */
+	int swpages;	/* [K] number of PAGE_SIZE'ed swap pages */
 	int swpginuse;	/* number of swap pages in use */
-	int swpgonly;	/* number of swap pages in use, not also in RAM */
+	int swpgonly;	/* [K] number of swap pages in use, not also in RAM */
 	int nswget;	/* number of swap pages moved from disk to RAM */
 	int nanon;	/* XXX number total of anon's in system */
 	int unused05;	/* formerly nanonneeded */
@@ -155,4 +156,41 @@ struct _ps_strings {
 	void	*val;
 };
 
+#ifdef _KERNEL
+
+/*
+ * Per-cpu UVM counters.
+ */
+extern struct cpumem *uvmexp_counters;
+
+enum uvm_exp_counters {
+	/* stat counters */
+	faults,		/* page fault count */
+	pageins,	/* pagein operation count */
+
+	/* fault subcounters */
+	flt_noram,	/* number of times fault was out of ram */
+	flt_noanon,	/* number of times fault was out of anons */
+	flt_noamap,	/* number of times fault was out of amap chunks */
+	flt_pgwait,	/* number of times fault had to wait on a page */
+	flt_pgrele,	/* number of times fault found a released page */
+	flt_relck,	/* number of times fault relock called */
+	flt_relckok,	/* number of times fault relock is a success */
+	flt_anget,	/* number of times fault gets anon page */
+	flt_anretry,	/* number of times fault retrys an anon get */
+	flt_amcopy,	/* number of times fault clears "needs copy" */
+	flt_namap,	/* number of times fault maps a neighbor anon page */
+	flt_nomap,	/* number of times fault maps a neighbor obj page */
+	flt_lget,	/* number of times fault does a locked pgo_get */
+	flt_get,	/* number of times fault does an unlocked get */
+	flt_anon,	/* number of times fault anon (case 1a) */
+	flt_acow,	/* number of times fault anon cow (case 1b) */
+	flt_obj,	/* number of times fault is on object page (2a) */
+	flt_prcopy,	/* number of times fault promotes with copy (2b) */
+	flt_przero,	/* number of times fault promotes with zerofill (2b) */
+
+	exp_ncounters
+};
+
+#endif /* _KERNEL */
 #endif /*_UVM_UVMEXP_ */

@@ -1,4 +1,4 @@
-/*	$OpenBSD: video.c,v 1.44 2020/05/16 10:47:22 mpi Exp $	*/
+/*	$OpenBSD: video.c,v 1.46 2020/12/28 18:28:11 mglocker Exp $	*/
 
 /*
  * Copyright (c) 2008 Robert Nagy <robert@openbsd.org>
@@ -51,6 +51,7 @@ struct video_softc {
 
 	int			 sc_fsize;
 	uint8_t			*sc_fbuffer;
+	caddr_t			 sc_fbuffer_mmap;
 	size_t			 sc_fbufferlen;
 	int			 sc_vidmode;	/* access mode */
 #define		VIDMODE_NONE	0
@@ -77,6 +78,11 @@ struct cfattach video_ca = {
 struct cfdriver video_cd = {
 	NULL, "video", DV_DULL
 };
+
+/*
+ * Global flag to control if video recording is enabled by kern.video.record.
+ */
+int video_record_enable = 0;
 
 int
 videoprobe(struct device *parent, void *match, void *aux)
@@ -191,6 +197,8 @@ videoread(dev_t dev, struct uio *uio, int ioflag)
 
 	/* move no more than 1 frame to userland, as per specification */
 	size = ulmin(uio->uio_resid, sc->sc_fsize);
+	if (!video_record_enable)
+		bzero(sc->sc_fbuffer, size);
 	error = uiomove(sc->sc_fbuffer, size, uio);
 	sc->sc_frames_ready--;
 	if (error)
@@ -205,6 +213,7 @@ int
 videoioctl(dev_t dev, u_long cmd, caddr_t data, int flags, struct proc *p)
 {
 	struct video_softc *sc;
+	struct v4l2_buffer *vb = (struct v4l2_buffer *)data;
 	int unit, error;
 
 	unit = VIDEOUNIT(dev);
@@ -299,6 +308,8 @@ videoioctl(dev_t dev, u_long cmd, caddr_t data, int flags, struct proc *p)
 		}
 		error = (sc->hw_if->dqbuf)(sc->hw_hdl,
 		    (struct v4l2_buffer *)data);
+		if (!video_record_enable)
+			bzero(sc->sc_fbuffer_mmap + vb->m.offset, vb->length);
 		sc->sc_frames_ready--;
 		break;
 	case VIDIOC_STREAMON:
@@ -409,6 +420,10 @@ videommap(dev_t dev, off_t off, int prot)
 		panic("videommap: invalid page");
 	sc->sc_vidmode = VIDMODE_MMAP;
 
+	/* store frame buffer base address for later blanking */
+	if (off == 0)
+		sc->sc_fbuffer_mmap = p;
+
 	return (pa);
 }
 
@@ -419,7 +434,7 @@ filt_videodetach(struct knote *kn)
 	int s;
 
 	s = splhigh();
-	klist_remove(&sc->sc_rsel.si_note, kn);
+	klist_remove_locked(&sc->sc_rsel.si_note, kn);
 	splx(s);
 }
 
@@ -476,7 +491,7 @@ videokqfilter(dev_t dev, struct knote *kn)
 	}
 
 	s = splhigh();
-	klist_insert(&sc->sc_rsel.si_note, kn);
+	klist_insert_locked(&sc->sc_rsel.si_note, kn);
 	splx(s);
 
 	return (0);
