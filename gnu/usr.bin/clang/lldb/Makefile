@@ -2,7 +2,7 @@
 
 .include <bsd.own.mk>
 
-NOPROG=	lldb
+PROG=	lldb
 BINDIR=	/usr/bin
 LIBEXECDIR=/usr/libexec
 
@@ -22,10 +22,8 @@ CPPFLAGS+=	${CLANG_INCLUDES}
 LLVM_LIBDEPS=	clangAST \
 		clangAnalysis \
 		clangBasic \
-		clangBasicTargets \
 		clangCodeGen \
 		clangDriver \
-		clangDriverArch \
 		clangEdit \
 		clangFrontend \
 		clangLex \
@@ -58,7 +56,6 @@ LLVM_LIBDEPS=	clangAST \
 		lldbPluginMemoryHistory \
 		lldbPluginObjectContainer \
 		lldbPluginObjectFile \
-		lldbPluginOperatingSystem \
 		lldbPluginPlatform \
 		lldbPluginProcess \
 		lldbPluginScriptInterpreter \
@@ -66,6 +63,7 @@ LLVM_LIBDEPS=	clangAST \
 		lldbPluginSymbolFile \
 		lldbPluginSymbolVendor \
 		lldbPluginSystemRuntime \
+		lldbPluginTypeSystem \
 		lldbPluginUnwindAssembly \
 		lldbSymbol \
 		lldbTarget \
