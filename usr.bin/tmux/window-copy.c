@@ -1,4 +1,4 @@
-/* $OpenBSD: window-copy.c,v 1.308 2020/12/28 09:36:26 nicm Exp $ */
+/* $OpenBSD: window-copy.c,v 1.310 2021/01/08 08:22:10 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -2030,6 +2030,8 @@ window_copy_cmd_search_backward_incremental(struct window_copy_cmd_state *cs)
 
 	data->timeout = 0;
 
+	log_debug ("%s: %s", __func__, argument);
+
 	prefix = *argument++;
 	if (data->searchx == -1 || data->searchy == -1) {
 		data->searchx = data->cx;
@@ -2082,6 +2084,8 @@ window_copy_cmd_search_forward_incremental(struct window_copy_cmd_state *cs)
 	enum window_copy_cmd_action	 action = WINDOW_COPY_CMD_NOTHING;
 
 	data->timeout = 0;
+
+	log_debug ("%s: %s", __func__, argument);
 
 	prefix = *argument++;
 	if (data->searchx == -1 || data->searchy == -1) {
@@ -3009,7 +3013,7 @@ window_copy_search_marks(struct window_mode_entry *wme, struct screen *ssp,
 	struct screen			*s = data->backing, ss;
 	struct screen_write_ctx		 ctx;
 	struct grid			*gd = s->grid;
-	int				 found, cis, which = -1, stopped = 0;
+	int				 found, cis, stopped = 0;
 	int				 cflags = REG_EXTENDED;
 	u_int				 px, py, i, b, nfound = 0, width;
 	u_int				 ssize = 1, start, end;
@@ -3072,11 +3076,7 @@ again:
 				if (!found)
 					break;
 			}
-
 			nfound++;
-			if (px == data->cx &&
-			    py == gd->hsize + data->cy - data->oy)
-				which = nfound;
 
 			if (window_copy_search_mark_at(data, px, py, &b) == 0) {
 				if (b + width > gd->sx * gd->sy)
@@ -3088,7 +3088,6 @@ again:
 				else
 					data->searchgen++;
 			}
-
 			px += width;
 		}
 
