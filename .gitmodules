@@ -1,0 +1,3 @@
+[submodule "gnu/llvm"]
+	path = gnu/llvm
+	url = https://github.com/mordak/llvm-project.git
