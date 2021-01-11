@@ -16,4 +16,3 @@ OMP.cpp:
 	ln -sf ${.OBJDIR}/../include/llvm/Frontend/OpenMP/OMP.cpp $@
 
 CLEANFILES+= OMP.cpp
-

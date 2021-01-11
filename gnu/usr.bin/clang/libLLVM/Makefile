@@ -80,4 +80,3 @@ includes:
 
 # Enable return protectors for libLLVM.so
 PICFLAG+= -fret-protector
-
