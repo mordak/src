@@ -1,4 +1,4 @@
-/*	$OpenBSD: if.c,v 1.25 2019/07/04 01:39:44 dlg Exp $ */
+/*	$OpenBSD: if.c,v 1.26 2021/01/18 00:49:09 mortimer Exp $ */
 /*
  * Copyright (c) 2004 Markus Friedl <markus@openbsd.org>
  *

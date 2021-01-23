@@ -1,4 +1,4 @@
-/*	$OpenBSD: dump.h,v 1.24 2015/05/23 05:17:20 guenther Exp $	*/
+/*	$OpenBSD: dump.h,v 1.25 2021/01/21 00:16:36 mortimer Exp $	*/
 /*	$NetBSD: dump.h,v 1.11 1997/06/05 11:13:20 lukem Exp $	*/
 
 /*-
@@ -55,13 +55,11 @@ extern char	*dumpinomap;	/* map of files to be dumped */
 extern char	*disk;		/* name of the disk file */
 extern char	*tape;		/* name of the tape file */
 extern char	*dumpdates;	/* name of the file containing dump date information*/
-extern char	*temp;		/* name of the file for doing rewrite of dumpdates */
 extern char	*duid;		/* duid of the disk being dumped */
 extern char	lastlevel;	/* dump level of previous dump */
 extern char	level;		/* dump level of this dump */
 extern int	uflag;		/* update flag */
 extern int	diskfd;		/* disk file descriptor */
-extern int	tapefd;		/* tape file descriptor */
 extern int	pipeout;	/* true => output to standard output */
 extern ino_t	curino;		/* current inumber; used globally */
 extern int	newtape;	/* new tape flag */
@@ -69,20 +67,20 @@ extern int	density;	/* density in 0.1" units */
 extern int64_t	tapesize;	/* estimated tape size, blocks */
 extern int64_t	tsize;		/* tape size in 0.1" units */
 extern int	unlimited;	/* if set, write to end of medium */
-extern int64_t	asize;		/* number of 0.1" units written on current tape */
 extern int	etapes;		/* estimated number of tapes */
 extern int	nonodump;	/* if set, do not honor UF_NODUMP user flags */
-
 extern int	notify;		/* notify operator flag */
 extern int64_t	blockswritten;	/* number of blocks written on current tape */
 extern int	tapeno;		/* current tape number */
+extern int 	ntrec;		/* blocking factor on tape */
+extern int64_t	blocksperfile;  /* number of blocks per output file */
+extern int	cartridge;	/* assume non-cartridge tape */
+extern char 	*host;		/* remote host (if any) */
 extern time_t	tstart_writing;	/* when started writing the first tape block */
 extern long	xferrate;	/* averaged transfer rate of all volumes */
 extern struct	fs *sblock;	/* the file system super block */
 extern char	sblock_buf[MAXBSIZE];
 extern int	tp_bshift;	/* log2(TP_BSIZE) */
-extern union u_spcl u_spcl;
-#define spcl u_spcl.s_spcl
 
 /* operator interface functions */
 void	broadcast(char *message);
@@ -166,8 +164,8 @@ struct dumptime {
 	struct	dumptime *dt_next;
 };
 extern struct	dumptime *dthead;	/* head of the list version */
-extern int	nddates;		/* number of records (might be zero) */
 extern int	ddates_in;		/* we have read the increment file */
+extern int	nddates;		/* number of records (might be zero) */
 extern struct	dumpdates **ddatev;	/* the arrayfied version */
 void	initdumptimes(void);
 void	getdumptime(void);

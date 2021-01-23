@@ -1,4 +1,4 @@
-/*	$OpenBSD: rcsprog.h,v 1.64 2014/10/02 06:23:15 otto Exp $	*/
+/*	$OpenBSD: rcsprog.h,v 1.65 2021/01/18 00:51:15 mortimer Exp $	*/
 /*
  * Copyright (c) 2005 Joris Vink <joris@openbsd.org>
  * All rights reserved.

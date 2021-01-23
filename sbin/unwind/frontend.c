@@ -1,4 +1,4 @@
-/*	$OpenBSD: frontend.c,v 1.60 2021/01/12 16:40:33 florian Exp $	*/
+/*	$OpenBSD: frontend.c,v 1.64 2021/01/19 16:52:40 florian Exp $	*/
 
 /*
  * Copyright (c) 2018 Florian Obser <florian@openbsd.org>
@@ -148,10 +148,10 @@ void			 free_bl(void);
 int			 pending_query_cnt(void);
 
 struct uw_conf		*frontend_conf;
-struct imsgev		*iev_main;
-struct imsgev		*iev_resolver;
+static struct imsgev	*iev_main;
+static struct imsgev	*iev_resolver;
 struct event		 ev_route;
-int			 udp4sock = -1, udp6sock = -1, routesock = -1;
+int			 udp4sock = -1, udp6sock = -1;
 int			 tcp4sock = -1, tcp6sock = -1;
 int			 ta_fd = -1;
 
@@ -185,7 +185,6 @@ frontend(int debug, int verbose)
 	struct passwd	*pw;
 
 	frontend_conf = config_new_empty();
-	control_state.fd = -1;
 
 	log_init(debug, LOG_DAEMON);
 	log_setverbose(verbose);
@@ -198,9 +197,8 @@ frontend(int debug, int verbose)
 	if (chdir("/") == -1)
 		fatal("chdir(\"/\")");
 
-	uw_process = PROC_FRONTEND;
-	setproctitle("%s", log_procnames[uw_process]);
-	log_procinit(log_procnames[uw_process]);
+	setproctitle("%s", "frontend");
+	log_procinit("frontend");
 
 	if (setgroups(1, &pw->pw_gid) ||
 	    setresgid(pw->pw_gid, pw->pw_gid, pw->pw_gid) ||
@@ -415,7 +413,9 @@ frontend_dispatch_main(int fd, short event, void *bula)
 			event_add(&tcp6ev.ev, NULL);
 			evtimer_set(&tcp6ev.pause, accept_paused, &tcp6ev);
 			break;
-		case IMSG_ROUTESOCK:
+		case IMSG_ROUTESOCK: {
+			static int	 routesock = -1;
+
 			if (routesock != -1)
 				fatalx("%s: received unexpected routesock",
 				    __func__);
@@ -427,20 +427,16 @@ frontend_dispatch_main(int fd, short event, void *bula)
 			event_set(&ev_route, fd, EV_READ | EV_PERSIST,
 			    route_receive, NULL);
 			break;
+		}
 		case IMSG_STARTUP:
 			frontend_startup();
 			break;
 		case IMSG_CONTROLFD:
-			if (control_state.fd != -1)
-				fatalx("%s: received unexpected controlsock",
-				    __func__);
 			if ((fd = imsg.fd) == -1)
 				fatalx("%s: expected to receive imsg control "
 				    "fd but didn't receive any", __func__);
-			control_state.fd = fd;
 			/* Listen on control socket. */
-			TAILQ_INIT(&ctl_conns);
-			control_listen();
+			control_listen(fd);
 			break;
 		case IMSG_TAFD:
 			if ((ta_fd = imsg.fd) != -1)

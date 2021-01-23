@@ -1,4 +1,4 @@
-/* $OpenBSD: d1_pkt.c,v 1.88 2021/01/13 18:38:34 jsing Exp $ */
+/* $OpenBSD: d1_pkt.c,v 1.90 2021/01/19 19:07:39 jsing Exp $ */
 /*
  * DTLS implementation written by Nagendra Modadugu
  * (nagendra@cs.stanford.edu) for the OpenSSL project 2005.
@@ -642,13 +642,12 @@ dtls1_read_bytes(SSL *s, int type, unsigned char *buf, int len, int peek)
 		return (0);
 	}
 
-
-	if (type == rr->type) /* SSL3_RT_APPLICATION_DATA or SSL3_RT_HANDSHAKE */
-	{
+	/* SSL3_RT_APPLICATION_DATA or SSL3_RT_HANDSHAKE */
+	if (type == rr->type) {
 		/* make sure that we are not getting application data when we
 		 * are doing a handshake for the first time */
-		if (SSL_in_init(s) && (type == SSL3_RT_APPLICATION_DATA) &&
-			(s->enc_read_ctx == NULL)) {
+		if (SSL_in_init(s) && type == SSL3_RT_APPLICATION_DATA &&
+		    !tls12_record_layer_read_protected(s->internal->rl)) {
 			al = SSL_AD_UNEXPECTED_MESSAGE;
 			SSLerror(s, SSL_R_APP_DATA_IN_HANDSHAKE);
 			goto f_err;
@@ -1106,7 +1105,6 @@ do_dtls1_write(SSL *s, int type, const unsigned char *buf, unsigned int len)
 		goto err;
 
 	tls12_record_layer_set_version(s->internal->rl, s->version);
-	tls12_record_layer_set_write_epoch(s->internal->rl, D1I(s)->w_epoch);
 
 	if (!tls12_record_layer_seal_record(s->internal->rl, type, buf, len, &cbb))
 		goto err;
@@ -1246,6 +1244,7 @@ dtls1_reset_seq_numbers(SSL *s, int rw)
 		memset(S3I(s)->read_sequence, 0, sizeof(S3I(s)->read_sequence));
 	} else {
 		D1I(s)->w_epoch++;
+		tls12_record_layer_set_write_epoch(s->internal->rl, D1I(s)->w_epoch);
 		memcpy(D1I(s)->last_write_sequence, S3I(s)->write_sequence,
 		    sizeof(S3I(s)->write_sequence));
 		memset(S3I(s)->write_sequence, 0, sizeof(S3I(s)->write_sequence));

@@ -1,4 +1,4 @@
-/*	$OpenBSD: main.c,v 1.97 2020/10/12 13:56:22 naddy Exp $	*/
+/*	$OpenBSD: main.c,v 1.98 2021/01/18 00:46:58 mortimer Exp $	*/
 
 /*
  * Copyright (c) 1992, 1993

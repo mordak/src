@@ -1,4 +1,4 @@
-/* $OpenBSD: doas.c,v 1.86 2021/01/16 09:18:41 martijn Exp $ */
+/* $OpenBSD: doas.c,v 1.88 2021/01/21 08:13:59 kn Exp $ */
 /*
  * Copyright (c) 2015 Ted Unangst <tedu@openbsd.org>
  *
