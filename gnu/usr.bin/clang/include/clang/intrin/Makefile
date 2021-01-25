@@ -30,6 +30,7 @@ HEADERS+=	arm_acle.h arm_cmse.h ${GEN}
 .elif ${MACHINE_ARCH} == "amd64" || ${MACHINE_ARCH} == "i386"
 HEADERS+=	adxintrin.h \
 		ammintrin.h \
+		amxintrin.h \
 		avx2intrin.h \
 		avx512bf16intrin.h \
 		avx512bwintrin.h \
@@ -61,6 +62,7 @@ HEADERS+=	adxintrin.h \
 		bmi2intrin.h \
 		bmiintrin.h \
 		cetintrin.h \
+		cet.h \
 		cldemoteintrin.h \
 		clzerointrin.h \
 		cpuid.h \
@@ -92,14 +94,17 @@ HEADERS+=	adxintrin.h \
 		ptwriteintrin.h \
 		rdseedintrin.h \
 		rtmintrin.h \
+		serializeintrin.h \
 		sgxintrin.h \
 		shaintrin.h \
 		smmintrin.h \
 		tbmintrin.h \
 		tmmintrin.h \
+		tsxldtrkintrin.h \
 		vaesintrin.h \
 		vpclmulqdqintrin.h \
 		waitpkgintrin.h \
+		wasm_simd128.h \
 		wbnoinvdintrin.h \
 		wmmintrin.h \
 		__wmmintrin_aes.h \
