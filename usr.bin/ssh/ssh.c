@@ -1,4 +1,4 @@
-/* $OpenBSD: ssh.c,v 1.547 2021/01/22 02:44:58 dtucker Exp $ */
+/* $OpenBSD: ssh.c,v 1.549 2021/01/27 09:26:54 djm Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -776,8 +776,9 @@ main(int ac, char **av)
 			    strcasecmp(optarg, "PubkeyAcceptedKeyTypes") == 0 || /* deprecated name */
 			    strcasecmp(optarg, "PubkeyAcceptedAlgorithms") == 0 ||
 			    strcasecmp(optarg, "HostKeyAlgorithms") == 0 ||
-			    strcasecmp(optarg, "HostbasedKeyTypes") == 0 ||
-			    strcasecmp(optarg, "HostbasedAcceptedKeyTypes") == 0)
+			    strcasecmp(optarg, "HostbasedKeyTypes") == 0 || /* deprecated name */
+			    strcasecmp(optarg, "HostbasedAcceptedKeyTypes") == 0 || /* deprecated name */
+			    strcasecmp(optarg, "HostbasedAcceptedAlgorithms") == 0)
 				cp = sshkey_alg_list(0, 0, 1, '\n');
 			else if (strcmp(optarg, "sig") == 0)
 				cp = sshkey_alg_list(0, 1, 1, '\n');
@@ -2096,7 +2097,7 @@ ssh_session2(struct ssh *ssh, const struct ssh_conn_info *cinfo)
 
 	/* If we don't expect to open a new session, then disallow it */
 	if (options.control_master == SSHCTL_MASTER_NO &&
-	    (datafellows & SSH_NEW_OPENSSH)) {
+	    (ssh->compat & SSH_NEW_OPENSSH)) {
 		debug("Requesting no-more-sessions@openssh.com");
 		if ((r = sshpkt_start(ssh, SSH2_MSG_GLOBAL_REQUEST)) != 0 ||
 		    (r = sshpkt_put_cstring(ssh,

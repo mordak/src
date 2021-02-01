@@ -1,4 +1,4 @@
-/*	$OpenBSD: hack.mklev.c,v 1.8 2016/01/09 18:33:15 mestre Exp $	*/
+/*	$OpenBSD: hack.mklev.c,v 1.9 2021/01/26 20:42:49 millert Exp $	*/
 
 /*
  * Copyright (c) 1985, Stichting Centrum voor Wiskunde en Informatica,

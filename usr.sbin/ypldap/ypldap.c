@@ -1,4 +1,4 @@
-/*	$OpenBSD: ypldap.c,v 1.21 2017/01/20 12:39:36 benno Exp $ */
+/*	$OpenBSD: ypldap.c,v 1.22 2021/01/27 07:21:55 deraadt Exp $ */
 
 /*
  * Copyright (c) 2008 Pierre-Yves Ritschard <pyr@openbsd.org>
@@ -59,6 +59,8 @@ enum ypldap_process ypldap_process;
 pid_t		 client_pid = 0;
 char		*conffile = YPLDAP_CONF_FILE;
 int		 opts = 0;
+
+enum privsep_procid ypldap_process;
 
 void
 usage(void)

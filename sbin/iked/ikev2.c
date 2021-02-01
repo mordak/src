@@ -1,4 +1,4 @@
-/*	$OpenBSD: ikev2.c,v 1.297 2021/01/21 16:50:46 tobhe Exp $	*/
+/*	$OpenBSD: ikev2.c,v 1.300 2021/01/31 17:23:45 tobhe Exp $	*/
 
 /*
  * Copyright (c) 2019 Tobias Heider <tobias.heider@stusta.de>
@@ -2755,7 +2755,7 @@ ikev2_resp_recv(struct iked *env, struct iked_message *msg,
 		}
 		if (ikev2_resp_ike_sa_init(env, msg) != 0) {
 			log_debug("%s: failed to send init response", __func__);
-			ikev2_ike_sa_setreason(sa, "SA_INIT reponse failed");
+			ikev2_ike_sa_setreason(sa, "SA_INIT response failed");
 			sa_state(env, sa, IKEV2_STATE_CLOSED);
 			return;
 		}
@@ -5929,8 +5929,10 @@ ikev2_childsa_negotiate(struct iked *env, struct iked_sa *sa,
 			flowa->flow_local = &sa->sa_local;
 			flowa->flow_peer = &sa->sa_peer;
 			flowa->flow_ikesa = sa;
-			if (ikev2_cp_fixflow(sa, flow, flowa) == -1)
+			if (ikev2_cp_fixflow(sa, flow, flowa) == -1) {
+				flow_free(flowa);
 				continue;
+			}
 
 			skip = 0;
 			TAILQ_FOREACH(saflow, &sa->sa_flows, flow_entry) {
@@ -5957,8 +5959,11 @@ ikev2_childsa_negotiate(struct iked *env, struct iked_sa *sa,
 			    sizeof(flow->flow_dst));
 			memcpy(&flowb->flow_dst, &flow->flow_src,
 			    sizeof(flow->flow_src));
-			if (ikev2_cp_fixflow(sa, flow, flowb) == -1)
+			if (ikev2_cp_fixflow(sa, flow, flowb) == -1) {
+				flow_free(flowa);
+				flow_free(flowb);
 				continue;
+			}
 
 			TAILQ_INSERT_TAIL(&sa->sa_flows, flowa, flow_entry);
 			TAILQ_INSERT_TAIL(&sa->sa_flows, flowb, flow_entry);
@@ -6964,7 +6969,7 @@ ikev2_cp_fixaddr(struct iked_sa *sa, struct iked_addr *addr,
 			return (-1);
 		in4 = (struct sockaddr_in *)&addr->addr;
 		if (in4->sin_addr.s_addr)
-			return (-1);
+			return (-2);
 		memcpy(patched, naddr, sizeof(*patched));
 		patched->addr_net = 0;
 		patched->addr_mask = 32;
@@ -6976,7 +6981,7 @@ ikev2_cp_fixaddr(struct iked_sa *sa, struct iked_addr *addr,
 			return (-1);
 		in6 = (struct sockaddr_in6 *)&addr->addr;
 		if (!IN6_IS_ADDR_UNSPECIFIED(&in6->sin6_addr))
-			return (-1);
+			return (-2);
 		memcpy(patched, naddr, sizeof(*patched));
 		patched->addr_net = 0;
 		patched->addr_mask = 128;

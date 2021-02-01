@@ -1,4 +1,4 @@
-/*	$OpenBSD: trek.h,v 1.14 2017/05/26 19:19:23 tedu Exp $	*/
+/*	$OpenBSD: trek.h,v 1.15 2021/01/27 01:57:37 deraadt Exp $	*/
 /*	$NetBSD: trek.h,v 1.3 1995/04/22 10:59:36 cgd Exp $	*/
 
 /*
@@ -31,16 +31,6 @@
  *
  *	@(#)trek.h	8.1 (Berkeley) 5/31/93
  */
-
-/*
-**  Global Declarations
-**
-**	Virtually all non-local variable declarations are made in this
-**	file and defined in "externs.c".
-**
-**	So far as I know, nothing in here must be preinitialized to
-**	zero.
-*/
 
 /*********************  GALAXY  **************************/
 
@@ -163,8 +153,7 @@ struct event
 
 #define	MAXEVENTS	25	/* max number of concurrently pending events */
 
-/* dynamic event list; one entry per pending event */
-extern struct event	Event[MAXEVENTS];
+extern struct event	Event[MAXEVENTS];	/* dynamic event list; one entry per pending event */
 
 /*****************************  KLINGONS  *******************************/
 
@@ -209,7 +198,7 @@ struct xy
 
 
 /* information regarding the state of the starship */
-struct ship
+extern struct Ship
 {
 	double	warp;		/* warp factor */
 	double	warp2;		/* warp factor squared */
@@ -232,14 +221,12 @@ struct ship
 	const char	*shipname;	/* name of current starship */
 	char	ship;		/* current starship */
 	int	distressed;	/* number of distress calls */
-};
-extern struct ship Ship;
-
+}	Ship;
 
 /* sinsbad is set if SINS is working but not calibrated */
 
 /* game related information, mostly scoring */
-struct game
+extern struct Game
 {
 	int	killk;		/* number of klingons killed */
 	int	deaths;		/* number of deaths onboard Enterprise */
@@ -255,11 +242,10 @@ struct game
 	char	snap;		/* set if snapshot taken */
 	char	helps;		/* number of help calls */
 	int	captives;	/* total number of captives taken */
-};
-extern struct game Game;
+}	Game;
 
 /* per move information */
-struct move
+extern struct Move
 {
 	char	free;		/* set if a move is free */
 	char	endgame;	/* end of game flag */
@@ -267,11 +253,10 @@ struct move
 	char	newquad;	/* set if just entered this quadrant */
 	char	resting;	/* set if this move is a rest */
 	double	time;		/* time used this move */
-};
-extern struct move Move;
+}	Move;
 
 /* parametric information */
-struct param
+extern struct Param
 {
 	unsigned char	bases;	/* number of starbases */
 	char	klings;		/* number of klingons */
@@ -302,13 +287,12 @@ struct param
 	int	klingcrew;	/* number of Klingons in a crew */
 	double	srndrprob;	/* surrender probability */
 	int	energylow;	/* low energy mark (cond YELLOW) */
-};
-extern struct param Param;
+}	Param;
 
 /* Sum of damage probabilities must add to 1000 */
 
 /* other information kept in a snapshot */
-struct now
+extern struct Now
 {
 	unsigned char	bases;	/* number of starbases */
 	char	klings;		/* number of klingons */
@@ -318,11 +302,10 @@ struct now
 	char	distressed;	/* number of currently distressed quadrants */
 	struct event	*eventptr[NEVENTS];	/* pointer to event structs */
 	struct xy	base[MAXBASES];		/* locations of starbases */
-};
-extern struct now Now;
+}	Now;
 
 /* Other stuff, not dumped in a snapshot */
-struct etc
+extern struct Etc
 {
 	struct kling	klingon[MAXKLQUAD];	/* sorted Klingon list */
 	short		nkling;			/* number of Klingons in this sector */
@@ -330,8 +313,7 @@ struct etc
 	struct xy	starbase;	/* starbase in current quadrant */
 	char		snapshot[sizeof Quad + sizeof Event + sizeof Now];	/* snapshot for time warp */
 	char		statreport;		/* set to get a status report on a srscan */
-};
-extern struct etc Etc;
+}	Etc;
 
 /*
  *	eventptr is a pointer to the event[] entry of the last

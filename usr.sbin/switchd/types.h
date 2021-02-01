@@ -1,4 +1,4 @@
-/*	$OpenBSD: types.h,v 1.11 2018/11/08 17:12:12 akoshibe Exp $	*/
+/*	$OpenBSD: types.h,v 1.12 2021/01/27 07:21:54 deraadt Exp $	*/
 
 /*
  * Copyright (c) 2013-2016 Reyk Floeter <reyk@openbsd.org>
@@ -73,6 +73,7 @@ enum privsep_procid {
 	PROC_OFCCONN,
 	PROC_MAX
 };
+extern enum privsep_procid privsep_process;
 
 enum blockmodes {
 	BM_NORMAL,

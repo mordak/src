@@ -1,4 +1,4 @@
-/*	$OpenBSD: httpd.h,v 1.153 2020/10/29 12:30:52 denis Exp $	*/
+/*	$OpenBSD: httpd.h,v 1.154 2021/01/27 07:21:52 deraadt Exp $	*/
 
 /*
  * Copyright (c) 2006 - 2015 Reyk Floeter <reyk@openbsd.org>
@@ -167,6 +167,11 @@ struct control_sock {
 	TAILQ_ENTRY(control_sock) cs_entry;
 };
 TAILQ_HEAD(control_socks, control_sock);
+
+extern struct {
+	struct event	 ev;
+	int		 fd;
+} control_state;
 
 struct imsgev {
 	struct imsgbuf		 ibuf;
@@ -434,6 +439,7 @@ struct log_file {
 	uint32_t		log_id;
 	TAILQ_ENTRY(log_file)	log_entry;
 };
+extern TAILQ_HEAD(log_files, log_file) log_files;
 
 struct media_type {
 	char			 media_name[MEDIATYPE_NAMEMAX];
