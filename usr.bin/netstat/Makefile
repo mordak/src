@@ -5,6 +5,6 @@ SRCS=	if.c inet.c inet6.c main.c mbuf.c mroute.c route.c \
 	unix.c mroute6.c net80211.c show.c
 LDADD=	-lkvm -lutil
 DPADD=	${LIBKVM} ${LIBUTIL}
-CFLAGS+=	-Wall -fcommon
+CFLAGS+=	-Wall
 
 .include <bsd.prog.mk>

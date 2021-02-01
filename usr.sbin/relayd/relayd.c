@@ -74,7 +74,6 @@ static struct privsep_proc procs[] = {
 	{ "relay",	PROC_RELAY, parent_dispatch_relay, relay },
 	{ "ca",		PROC_CA, parent_dispatch_ca, ca }
 };
-enum privsep_procid privsep_process;
 
 enum privsep_procid privsep_process;
 

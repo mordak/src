@@ -91,14 +91,3 @@ const char	*const Systemname[NINHAB] =
 	"Epsilon Eridani IV",
 	"Exo III"
 };
-
-/* definitions of globals defined in trek.h */
-char   Sect[NSECTS][NSECTS];
-struct quad Quad[NQUADS][NQUADS];
-struct event Event[MAXEVENTS];
-struct ship Ship;
-struct game Game;
-struct move Move;
-struct param Param;
-struct now Now;
-struct etc Etc;
