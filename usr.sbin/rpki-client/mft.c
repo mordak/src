@@ -1,4 +1,4 @@
-/*	$OpenBSD: mft.c,v 1.25 2021/02/04 08:58:19 claudio Exp $ */
+/*	$OpenBSD: mft.c,v 1.27 2021/02/19 12:18:23 tb Exp $ */
 /*
  * Copyright (c) 2019 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -193,13 +193,12 @@ mft_parse_filehash(struct parse *p, const ASN1_OCTET_STRING *os)
 
 	/* Insert the filename and hash value. */
 
-	p->res->files = reallocarray(p->res->files, p->res->filesz + 1,
-	    sizeof(struct mftfile));
+	p->res->files = recallocarray(p->res->files, p->res->filesz,
+	    p->res->filesz + 1, sizeof(struct mftfile));
 	if (p->res->files == NULL)
 		err(1, NULL);
 
 	fent = &p->res->files[p->res->filesz++];
-	memset(fent, 0, sizeof(struct mftfile));
 
 	fent->file = fn;
 	fn = NULL;
@@ -395,7 +394,8 @@ mft_parse(X509 **x509, const char *fn)
 		err(1, NULL);
 	if ((p.res->file = strdup(fn)) == NULL)
 		err(1, NULL);
-	if (!x509_get_ski_aki(*x509, fn, &p.res->ski, &p.res->aki))
+	if (!x509_get_extensions(*x509, fn, &p.res->ski, &p.res->aki,
+	    &p.res->aia))
 		goto out;
 
 	/*
@@ -509,6 +509,7 @@ mft_free(struct mft *p)
 		for (i = 0; i < p->filesz; i++)
 			free(p->files[i].file);
 
+	free(p->aia);
 	free(p->aki);
 	free(p->ski);
 	free(p->file);
@@ -534,6 +535,7 @@ mft_buffer(struct ibuf *b, const struct mft *p)
 		io_simple_buffer(b, p->files[i].hash, SHA256_DIGEST_LENGTH);
 	}
 
+	io_str_buffer(b, p->aia);
 	io_str_buffer(b, p->aki);
 	io_str_buffer(b, p->ski);
 }
@@ -564,9 +566,10 @@ mft_read(int fd)
 		io_simple_read(fd, p->files[i].hash, SHA256_DIGEST_LENGTH);
 	}
 
+	io_str_read(fd, &p->aia);
 	io_str_read(fd, &p->aki);
 	io_str_read(fd, &p->ski);
-	assert(p->aki && p->ski);
+	assert(p->aia && p->aki && p->ski);
 
 	return p;
 }

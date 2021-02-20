@@ -1,4 +1,4 @@
-/*	$OpenBSD: main.c,v 1.98 2021/02/05 12:26:52 claudio Exp $ */
+/*	$OpenBSD: main.c,v 1.103 2021/02/19 12:18:23 tb Exp $ */
 /*
  * Copyright (c) 2019 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -15,33 +15,6 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*-
- * Copyright (C) 2009 Gabor Kovesdan <gabor@FreeBSD.org>
- * Copyright (C) 2012 Oleg Moskalenko <mom040267@gmail.com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
-
 #include <sys/queue.h>
 #include <sys/socket.h>
 #include <sys/resource.h>
@@ -54,6 +27,7 @@
 #include <err.h>
 #include <errno.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <fnmatch.h>
 #include <fts.h>
 #include <poll.h>
@@ -78,11 +52,12 @@
  * An rsync repository.
  */
 struct	repo {
-	char		*repo;	/* repository rsync URI */
-	char		*local;	/* local path name */
-	char		*notify; /* RRDB notify URI if available */
-	size_t		 id; /* identifier (array index) */
-	int		 loaded; /* whether loaded or not */
+	char		*repouri;	/* CA repository base URI */
+	char		*local;		/* local path name */
+	char		*uris[2];	/* URIs to fetch from */
+	size_t		 id;		/* identifier (array index) */
+	int		 uriidx;	/* which URI is fetched */
+	int		 loaded;	/* whether loaded or not */
 };
 
 size_t	entity_queue;
@@ -117,6 +92,7 @@ RB_PROTOTYPE(filepath_tree, filepath, entry, filepathcmp);
 
 static struct filepath_tree	fpt = RB_INITIALIZER(&fpt);
 static struct msgbuf		procq, rsyncq;
+static int			cachefd;
 
 const char	*bird_tablename = "ROAS";
 
@@ -284,64 +260,122 @@ entityq_add(struct entityq *q, char *file, enum rtype type,
 }
 
 /*
- * Look up a repository, queueing it for discovery if not found.
+ * Allocat a new repository be extending the repotable.
  */
-static const struct repo *
-repo_lookup(const char *uri)
+static struct repo *
+repo_alloc(void)
 {
-	const char	*host, *mod;
-	size_t		 hostsz, modsz, i;
-	char		*local;
-	struct repo	*rp;
+	struct repo *rp;
+
+	rt.repos = recallocarray(rt.repos, rt.reposz, rt.reposz + 1,
+	    sizeof(struct repo));
+	if (rt.repos == NULL)
+		err(1, "recallocarray");
+
+	rp = &rt.repos[rt.reposz++];
+	rp->id = rt.reposz - 1;
+
+	return rp;
+}
+
+static void
+repo_fetch(struct repo *rp)
+{
 	struct ibuf	*b;
 
-	if (!rsync_uri_parse(&host, &hostsz,
-	    &mod, &modsz, NULL, NULL, NULL, uri))
-		errx(1, "%s: malformed", uri);
+	if (noop) {
+		rp->loaded = 1;
+		logx("%s: using cache", rp->local);
+		stats.repos++;
+		/* there is nothing in the queue so no need to flush */
+		return;
+	}
 
-	if (asprintf(&local, "%.*s/%.*s", (int)hostsz, host,
-	    (int)modsz, mod) == -1)
-		err(1, "asprintf");
+	/*
+	 * Create destination location.
+	 * Build up the tree to this point because GPL rsync(1)
+	 * will not build the destination for us.
+	 */
 
-	/* Look up in repository table. */
+	if (mkpath(cachefd, rp->local) == -1)
+		err(1, "%s", rp->local);
 
+	logx("%s: pulling from network", rp->local);
+	if ((b = ibuf_dynamic(256, UINT_MAX)) == NULL)
+		err(1, NULL);
+	io_simple_buffer(b, &rp->id, sizeof(rp->id));
+	io_str_buffer(b, rp->local);
+	io_str_buffer(b, rp->uris[0]);
+	ibuf_close(&rsyncq, b);
+}
+
+/*
+ * Look up a trust anchor, queueing it for download if not found.
+ */
+static const struct repo *
+ta_lookup(const struct tal *tal)
+{
+	struct repo	*rp;
+	char		*local;
+	size_t		i, j;
+
+	if (asprintf(&local, "ta/%s", tal->descr) == -1)
+		err(1, "asprinf");
+
+	/* Look up in repository table. (Lookup should actually fail here) */
 	for (i = 0; i < rt.reposz; i++) {
-		if (strcmp(rt.repos[i].local, local))
+		if (strcmp(rt.repos[i].local, local) != 0)
 			continue;
 		free(local);
 		return &rt.repos[i];
 	}
 
-	rt.repos = reallocarray(rt.repos,
-		rt.reposz + 1, sizeof(struct repo));
-	if (rt.repos == NULL)
-		err(1, "reallocarray");
-
-	rp = &rt.repos[rt.reposz++];
-	memset(rp, 0, sizeof(struct repo));
-	rp->id = rt.reposz - 1;
+	rp = repo_alloc();
 	rp->local = local;
+	for (i = 0, j = 0; i < tal->urisz && j < 2; i++) {
+		if (strncasecmp(tal->uri[i], "rsync://", 8) != 0)
+			continue;	/* ignore non rsync URI for now */
+		if ((rp->uris[j++] = strdup(tal->uri[i])) == NULL)
+			err(1, "strdup");
+	}
+	if (j == 0)
+		errx(1, "TAL file has no rsync:// URI");
 
-	if ((rp->repo = strndup(uri, mod + modsz - uri)) == NULL)
+	repo_fetch(rp);
+	return rp;
+}
+
+/*
+ * Look up a repository, queueing it for discovery if not found.
+ */
+static const struct repo *
+repo_lookup(const char *uri)
+{
+	char		*local, *repo;
+	struct repo	*rp;
+	size_t		 i;
+
+	if ((repo = rsync_base_uri(uri)) == NULL)
+		return NULL;
+
+	/* Look up in repository table. */
+	for (i = 0; i < rt.reposz; i++) {
+		if (rt.repos[i].repouri == NULL ||
+		    strcmp(rt.repos[i].repouri, repo) != 0)
+			continue;
+		free(repo);
+		return &rt.repos[i];
+	}
+
+	rp = repo_alloc();
+	rp->repouri = repo;
+	local = strchr(repo, ':') + strlen("://");
+	if (asprintf(&rp->local, "rsync/%s", local) == -1)
+		err(1, "asprintf");
+	if ((rp->uris[0] = strdup(repo)) == NULL)
 		err(1, "strdup");
 
-	if (!noop) {
-		if (asprintf(&local, "%s", rp->local) == -1)
-			err(1, "asprintf");
-		logx("%s: pulling from network", local);
-		if ((b = ibuf_dynamic(256, UINT_MAX)) == NULL)
-			err(1, NULL);
-		io_simple_buffer(b, &rp->id, sizeof(rp->id));
-		io_str_buffer(b, local);
-		io_str_buffer(b, rp->repo);
-		ibuf_close(&rsyncq, b);
-		free(local);
-	} else {
-		rp->loaded = 1;
-		logx("%s: using cache", rp->local);
-		stats.repos++;
-		/* there is nothing in the queue so no need to flush */
-	}
+	repo_fetch(rp);
 	return rp;
 }
 
@@ -353,7 +387,10 @@ repo_filename(const struct repo *repo, const char *uri)
 {
 	char *nfile;
 
-	uri += strlen(repo->repo) + 1;
+	if (strstr(uri, repo->repouri) != uri)
+		errx(1, "%s: URI outside of repository", uri);
+	uri += strlen(repo->repouri) + 1;	/* skip base and '/' */
+
 	if (asprintf(&nfile, "%s/%s", repo->local, uri) == -1)
 		err(1, "asprintf");
 	return nfile;
@@ -484,22 +521,17 @@ queue_add_from_tal(struct entityq *q, const struct tal *tal)
 {
 	char			*nfile;
 	const struct repo	*repo;
-	const char		*uri = NULL;
-	size_t			 i;
+	const char		*uri;
 
 	assert(tal->urisz);
 
-	for (i = 0; i < tal->urisz; i++) {
-		uri = tal->uri[i];
-		if (strncasecmp(uri, "rsync://", 8) == 0)
-			break;
-	}
-	if (uri == NULL)
-		errx(1, "TAL file has no rsync:// URI");
-
 	/* Look up the repository. */
-	repo = repo_lookup(uri);
-	nfile = repo_filename(repo, uri);
+	repo = ta_lookup(tal);
+
+	uri = strrchr(repo->uris[0], '/');
+	assert(uri);
+	if (asprintf(&nfile, "%s/%s", repo->local, uri + 1) == -1)
+		err(1, "asprintf");
 
 	entityq_add(q, nfile, RTYPE_CER, repo, tal->pkey,
 	    tal->pkeysz, tal->descr);
@@ -515,6 +547,9 @@ queue_add_from_cert(struct entityq *q, const struct cert *cert)
 	char			*nfile;
 
 	repo = repo_lookup(cert->mft);
+	if (repo == NULL) /* bad repository URI */
+		return;
+
 	nfile = repo_filename(repo, cert->mft);
 
 	entityq_add(q, nfile, RTYPE_MFT, repo, NULL, 0, NULL);
@@ -660,7 +695,7 @@ add_to_del(char **del, size_t *dsz, char *file)
 }
 
 static size_t
-repo_cleanup(const char *cachedir)
+repo_cleanup(int dirfd)
 {
 	size_t i, delsz = 0;
 	char *argv[2], **del = NULL;
@@ -668,8 +703,8 @@ repo_cleanup(const char *cachedir)
 	FTSENT *e;
 
 	/* change working directory to the cache directory */
-	if (chdir(cachedir) == -1)
-		err(1, "%s: chdir", cachedir);
+	if (fchdir(dirfd) == -1)
+		err(1, "fchdir");
 
 	for (i = 0; i < rt.reposz; i++) {
 		if (asprintf(&argv[0], "%s", rt.repos[i].local) == -1)
@@ -842,6 +877,9 @@ main(int argc, char *argv[])
 		goto usage;
 	}
 
+	if ((cachefd = open(cachedir, O_RDONLY, 0)) == -1)
+		err(1, "cache directory %s", cachedir);
+
 	if (outformats == 0)
 		outformats = FORMAT_OPENBGPD;
 
@@ -867,8 +905,8 @@ main(int argc, char *argv[])
 		close(fd[1]);
 
 		/* change working directory to the cache directory */
-		if (chdir(cachedir) == -1)
-			err(1, "%s: chdir", cachedir);
+		if (fchdir(cachefd) == -1)
+			err(1, "fchdir");
 
 		/* Only allow access to the cache directory. */
 		if (unveil(cachedir, "r") == -1)
@@ -900,8 +938,8 @@ main(int argc, char *argv[])
 			close(fd[1]);
 
 			/* change working directory to the cache directory */
-			if (chdir(cachedir) == -1)
-				err(1, "%s: chdir", cachedir);
+			if (fchdir(cachefd) == -1)
+				err(1, "fchdir");
 
 			if (pledge("stdio rpath cpath proc exec unveil", NULL)
 			    == -1)
@@ -1064,7 +1102,7 @@ main(int argc, char *argv[])
 	if (outputfiles(&v, &stats))
 		rc = 1;
 
-	stats.del_files = repo_cleanup(cachedir);
+	stats.del_files = repo_cleanup(cachefd);
 
 	logx("Route Origin Authorizations: %zu (%zu failed parse, %zu invalid)",
 	    stats.roas, stats.roas_fail, stats.roas_invalid);
@@ -1081,8 +1119,10 @@ main(int argc, char *argv[])
 
 	/* Memory cleanup. */
 	for (i = 0; i < rt.reposz; i++) {
+		free(rt.repos[i].repouri);
 		free(rt.repos[i].local);
-		free(rt.repos[i].repo);
+		free(rt.repos[i].uris[0]);
+		free(rt.repos[i].uris[1]);
 	}
 	free(rt.repos);
 
