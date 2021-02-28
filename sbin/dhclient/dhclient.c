@@ -1,4 +1,4 @@
-/*	$OpenBSD: dhclient.c,v 1.694 2021/02/19 13:46:59 krw Exp $	*/
+/*	$OpenBSD: dhclient.c,v 1.707 2021/02/28 17:49:01 krw Exp $	*/
 
 /*
  * Copyright 2004 Henning Brauer <henning@openbsd.org>
@@ -119,7 +119,6 @@ void		 get_address(struct interface_info *);
 void		 get_ssid(struct interface_info *, int);
 void		 get_sockets(struct interface_info *);
 int		 get_routefd(int);
-void		 set_autoconf(struct interface_info *, int);
 void		 set_iff_up(struct interface_info *, int);
 void		 set_user(char *);
 int		 get_ifa_family(char *, int);
@@ -180,8 +179,7 @@ struct client_lease *get_recorded_lease(struct interface_info *);
 
 #define	TICK_WAIT	0
 #define	TICK_SUCCESS	1
-#define	TICK_SLEEP	2
-#define	TICK_NEWLINE	3
+#define	TICK_DAEMON	2
 
 static FILE *leaseFile;
 
@@ -258,13 +256,10 @@ interface_state(struct interface_info *ifi)
 
 	newlinkup = LINK_STATE_IS_UP(ifi->link_state);
 	if (newlinkup != oldlinkup) {
+		log_debug("%s: link %s -> %s", log_procname,
+		    (oldlinkup != 0) ? "up" : "down",
+		    (newlinkup != 0) ? "up" : "down");
 		tick_msg("link", newlinkup ? TICK_SUCCESS : TICK_WAIT);
-		if (log_getverbose()) {
-			tick_msg("", TICK_NEWLINE);
-			log_debug("%s: link %s -> %s", log_procname,
-			    (oldlinkup != 0) ? "up" : "down",
-			    (newlinkup != 0) ? "up" : "down");
-		}
 	}
 
 	if (newlinkup != 0) {
@@ -273,10 +268,7 @@ interface_state(struct interface_info *ifi)
 		memcpy(ifi->hw_address.ether_addr_octet, LLADDR(sdl),
 		    ETHER_ADDR_LEN);
 		if (memcmp(&hw, &ifi->hw_address, sizeof(hw))) {
-			if (log_getverbose()) {
-				tick_msg("", TICK_NEWLINE);
-				log_debug("%s: LLADDR changed", log_procname);
-			}
+			log_debug("%s: LLADDR changed", log_procname);
 			quit = RESTART;
 		}
 	}
@@ -311,10 +303,8 @@ initialize_interface(char *name, int noaction)
 	get_sockets(ifi);
 	get_ssid(ifi, ioctlfd);
 
-	if (noaction == 0) {
-		set_autoconf(ifi, ioctlfd);
+	if (noaction == 0)
 		set_iff_up(ifi, ioctlfd);
-	}
 
 	close(ioctlfd);
 
@@ -387,25 +377,6 @@ get_ssid(struct interface_info *ifi, int ioctlfd)
 		memcpy(ifi->ssid, nwid.i_nwid, nwid.i_len);
 		ifi->ssid_len = nwid.i_len;
 	}
-}
-
-void
-set_autoconf(struct interface_info *ifi, int ioctlfd)
-{
-	struct ifreq		ifr;
-
-	memset(&ifr, 0, sizeof(ifr));
-	strlcpy(ifr.ifr_name, ifi->name, sizeof(ifr.ifr_name));
-
-	if (ioctl(ioctlfd, SIOCGIFXFLAGS, (caddr_t)&ifr) < 0)
-		fatal("SIOGIFXFLAGS");
-	if ((ifr.ifr_flags & IFXF_AUTOCONF4) == 0) {
-		ifr.ifr_flags |= IFXF_AUTOCONF4;
-		if (ioctl(ioctlfd, SIOCSIFXFLAGS, (caddr_t)&ifr) == -1)
-			fatal("SIOCSIFXFLAGS");
-	}
-
-	ifi->flags |= IFI_AUTOCONF;
 }
 
 void
@@ -568,19 +539,6 @@ rtm_dispatch(struct interface_info *ifi, struct rt_msghdr *rtm)
 		if ((rtm->rtm_flags & RTF_UP) == 0)
 			fatalx("down");
 
- 		if ((ifm->ifm_xflags & IFXF_AUTOCONF4) == 0 &&
-		    (ifi->flags & IFI_AUTOCONF) != 0) {
-			/* Tell unwind when IFI_AUTOCONF is cleared. */
-			tell_unwind(NULL, ifi->flags);
-			ifi->flags &= ~IFI_AUTOCONF;
-		} else if ((ifm->ifm_xflags & IFXF_AUTOCONF4) != 0 &&
-		    (ifi->flags & IFI_AUTOCONF) == 0) {
-			/* Get new lease when IFI_AUTOCONF is set. */
-			ifi->flags |= IFI_AUTOCONF;
-			quit = RESTART;
-			break;
-		}
-
 		oldmtu = ifi->mtu;
 		interface_state(ifi);
 		if (oldmtu == ifi->mtu)
@@ -596,10 +554,7 @@ rtm_dispatch(struct interface_info *ifi, struct rt_msghdr *rtm)
 		ifie = &((struct if_ieee80211_msghdr *)rtm)->ifim_ifie;
 		if (ifi->ssid_len != ifie->ifie_nwid_len || memcmp(ifi->ssid,
 		    ifie->ifie_nwid, ifie->ifie_nwid_len) != 0) {
-			if (log_getverbose()) {
-				tick_msg("", TICK_NEWLINE);
-				log_debug("%s: SSID changed", log_procname);
-			}
+			log_debug("%s: SSID changed", log_procname);
 			quit = RESTART;
 			return;
 		}
@@ -629,7 +584,6 @@ rtm_dispatch(struct interface_info *ifi, struct rt_msghdr *rtm)
 	 * Responsibility for resolv.conf may have changed hands.
 	 */
 	if (quit == 0 && ifi->active != NULL &&
-	    (ifi->flags & IFI_AUTOCONF) != 0 &&
 	    (ifi->flags & IFI_IN_CHARGE) != 0 &&
 	    ifi->state == S_BOUND)
 		write_resolv_conf();
@@ -793,10 +747,6 @@ usage(void)
 void
 state_preboot(struct interface_info *ifi)
 {
-	time_t		 cur_time;
-
-	time(&cur_time);
-
 	interface_state(ifi);
 	if (quit != 0)
 		return;
@@ -806,14 +756,8 @@ state_preboot(struct interface_info *ifi)
 		ifi->state = S_REBOOTING;
 		state_reboot(ifi);
 	} else {
-		if (cur_time < ifi->startup_time + config->link_timeout) {
-			tick_msg("link", TICK_WAIT);
-			set_timeout(ifi, 1, state_preboot);
-		} else {
-			tick_msg("link", TICK_SLEEP);
-			go_daemon();
-			cancel_timeout(ifi); /* Wait for RTM_IFINFO. */
-		}
+		tick_msg("link", TICK_WAIT);
+		set_timeout(ifi, 1, state_preboot);
 	}
 }
 
@@ -823,7 +767,9 @@ state_preboot(struct interface_info *ifi)
 void
 state_reboot(struct interface_info *ifi)
 {
-	struct client_lease		*lease;
+	const struct timespec	 reboot_intvl = {config->reboot_interval, 0};
+	struct timespec		 now;
+	struct client_lease	*lease;
 
 	cancel_timeout(ifi);
 
@@ -846,7 +792,9 @@ state_reboot(struct interface_info *ifi)
 	make_request(ifi, ifi->active);
 
 	ifi->destination.s_addr = INADDR_BROADCAST;
-	time(&ifi->first_sending);
+	clock_gettime(CLOCK_REALTIME, &now);
+	ifi->first_sending = now.tv_sec;
+	timespecadd(&now, &reboot_intvl, &ifi->reboot_timeout);
 	ifi->interval = 0;
 
 	send_request(ifi);
@@ -1071,8 +1019,7 @@ bind_lease(struct interface_info *ifi)
 	int			 rslt, seen;
 
 	time(&cur_time);
-	if (log_getverbose() == 0)
-		tick_msg("lease", TICK_SUCCESS);
+	tick_msg("lease", TICK_SUCCESS);
 
 	lease = apply_defaults(ifi->offer);
 
@@ -1135,13 +1082,11 @@ bind_lease(struct interface_info *ifi)
 
 newlease:
 	/*
-	 * Remove previous dynamic lease(es) for this address, and any expired
+	 * Remove previous dynamic lease(s) for this address, and any expired
 	 * dynamic leases.
 	 */
 	seen = 0;
 	TAILQ_FOREACH_SAFE(ll, &ifi->lease_db, next, pl) {
-		if (ifi->active == NULL)
-			continue;
 		if (ifi->ssid_len != ll->ssid_len)
 			continue;
 		if (memcmp(ifi->ssid, ll->ssid, ll->ssid_len) != 0)
@@ -1172,7 +1117,6 @@ newlease:
 	ifi->offer_src = NULL;
 
 	if (msg != NULL) {
-		tick_msg("", TICK_NEWLINE);
 		if ((cmd_opts & OPT_FOREGROUND) != 0) {
 			/* log msg on console only. */
 			;
@@ -1426,7 +1370,7 @@ set_interval(struct interface_info *ifi, time_t cur_time)
 
 	if (interval == 0) {
 		if (ifi->state == S_REBOOTING)
-			interval = config->reboot_timeout;
+			interval = config->reboot_interval;
 		else
 			interval = config->initial_interval;
 	} else {
@@ -1442,14 +1386,14 @@ set_interval(struct interface_info *ifi, time_t cur_time)
 			interval = ifi->expiry - cur_time;
 		break;
 	case S_REQUESTING:
-		if (cur_time + interval > ifi->first_sending + config->timeout)
-			interval = (ifi->first_sending + config->timeout) - cur_time;
+		if (cur_time + interval > ifi->first_sending + config->offer_interval)
+			interval = (ifi->first_sending + config->offer_interval) - cur_time;
 		break;
 	default:
 		break;
 	}
 
-	if (cur_time < ifi->startup_time + config->link_timeout)
+	if (cur_time < ifi->startup_time + config->link_interval)
 		interval = 1;
 
 	ifi->interval = interval ? interval : 1;
@@ -1484,10 +1428,7 @@ send_discover(struct interface_info *ifi)
 
 	time(&cur_time);
 
-	if (log_getverbose())
-		tick_msg("lease", TICK_WAIT);
-
-	if (cur_time > ifi->first_sending + config->timeout) {
+	if (cur_time > ifi->first_sending + config->offer_interval) {
 		state_panic(ifi);
 		return;
 	}
@@ -1500,6 +1441,7 @@ send_discover(struct interface_info *ifi)
 		log_debug("%s: DHCPDISCOVER - interval %lld", log_procname,
 		    (long long)ifi->interval);
 
+	tick_msg("lease", TICK_WAIT);
 	set_timeout(ifi, ifi->interval, send_discover);
 }
 
@@ -1531,7 +1473,7 @@ state_panic(struct interface_info *ifi)
 	    log_procname);
 	ifi->state = S_INIT;
 	set_timeout(ifi, config->retry_interval, state_init);
-	go_daemon();
+	tick_msg("lease", TICK_DAEMON);
 }
 
 void
@@ -1539,20 +1481,20 @@ send_request(struct interface_info *ifi)
 {
 	struct sockaddr_in	 destination;
 	struct in_addr		 from;
+	struct timespec		 now;
 	ssize_t			 rslt;
 	time_t			 cur_time, interval;
 
 	cancel_timeout(ifi);
-	time(&cur_time);
-	if (log_getverbose())
-		tick_msg("lease", TICK_WAIT);
+	clock_gettime(CLOCK_REALTIME, &now);
+	cur_time = now.tv_sec;
 
 	/* Figure out how long it's been since we started transmitting. */
 	interval = cur_time - ifi->first_sending;
 
 	switch (ifi->state) {
 	case S_REBOOTING:
-		if (interval > config->reboot_timeout)
+		if (timespeccmp(&now, &ifi->reboot_timeout, >=))
 			ifi->state = S_INIT;
 		else {
 			destination.sin_addr.s_addr = INADDR_BROADCAST;
@@ -1577,7 +1519,7 @@ send_request(struct interface_info *ifi)
 		}
 		break;
 	case S_REQUESTING:
-		if (interval > config->timeout)
+		if (interval > config->offer_interval)
 			ifi->state = S_INIT;
 		else {
 			destination.sin_addr.s_addr = INADDR_BROADCAST;
@@ -1603,6 +1545,7 @@ send_request(struct interface_info *ifi)
 		log_debug("%s: DHCPREQUEST to %s", log_procname,
 		    inet_ntoa(destination.sin_addr));
 
+	tick_msg("lease", TICK_WAIT);
 	set_timeout(ifi, ifi->interval, send_request);
 }
 
@@ -2628,9 +2571,6 @@ get_recorded_lease(struct interface_info *ifi)
 		break;
 	}
 
-	if (lp != NULL && lp->epoch == 0)
-		time(&lp->epoch);
-
 	return lp;
 }
 
@@ -2700,10 +2640,11 @@ void
 tick_msg(const char *preamble, int action)
 {
 	const struct timespec		grace_intvl = {3, 0};
-	const struct timespec		link_intvl = {config->link_timeout, 0};
+	const struct timespec		link_intvl = {config->link_interval, 0};
 	static struct timespec		grace, stop;
 	struct timespec			now;
-	static int			preamble_sent, sleeping;
+	static int			linkup, preamble_sent, sleeping;
+	int				printmsg;
 
 	if (isatty(STDERR_FILENO) == 0 || sleeping == 1)
 		return;
@@ -2717,40 +2658,54 @@ tick_msg(const char *preamble, int action)
 		return;
 	}
 	if (timespeccmp(&now, &grace, <))
-		return;
-	if (timespeccmp(&now, &stop, >=))
-		action = TICK_SLEEP;
+		printmsg = 0;	/* Wait a bit before speaking. */
+	else if (linkup && strcmp("link", preamble) == 0)
+		printmsg = 0;	/* One 'got link' is enough for anyone. */
+	else if (log_getverbose())
+		printmsg = 0;	/* Verbose has sufficent verbiage. */
+	else
+		printmsg = 1;
 
-	if (preamble_sent == 0) {
+	if (timespeccmp(&now, &stop, >=)) {
+		if (action == TICK_WAIT)
+			action = TICK_DAEMON;
+		log_debug("%s: link timeout (%lld seconds) expired",
+		    log_procname, (long long)link_intvl.tv_sec);
+		linkup = 1;
+	}
+
+	if (printmsg && preamble_sent == 0) {
 		fprintf(stderr, "%s: no %s...", log_procname, preamble);
 		preamble_sent = 1;
 	}
 
 	switch (action) {
 	case TICK_SUCCESS:
-		fprintf(stderr, "got %s\n", preamble);
-		timespecclear(&stop);
+		if (printmsg)
+			fprintf(stderr, "got %s\n", preamble);
+		preamble_sent = 0;
+		if (strcmp("link", preamble) == 0) {
+			linkup = 1;
+			/* New silent period for "no lease ... got lease". */
+			timespecadd(&now, &grace_intvl, &grace);
+		}
 		break;
 	case TICK_WAIT:
-		fprintf(stderr, ".");
+		if (printmsg)
+			fprintf(stderr, ".");
 		break;
-	case TICK_SLEEP:
-		fprintf(stderr, "sleeping\n");
+	case TICK_DAEMON:
+		if (printmsg)
+			fprintf(stderr, "sleeping\n");
 		go_daemon();
 		sleeping = 1;	/* OPT_FOREGROUND means isatty() == 1! */
-		timespecclear(&stop);
-		break;
-	case TICK_NEWLINE:
-		if (preamble_sent == 1) {
-			fprintf(stderr, "\n");
-			preamble_sent = 0;
-		}
 		break;
 	default:
 		break;
 	}
 
-	fflush(stderr);
+	if (printmsg)
+		fflush(stderr);
 }
 
 /*
@@ -2786,10 +2741,10 @@ release_lease(struct interface_info *ifi)
 	imsg_flush(unpriv_ibuf);
 
 	TAILQ_REMOVE(&ifi->lease_db, ifi->active, next);
-	write_lease_db(&ifi->lease_db);
-
 	free_client_lease(ifi->active);
 	ifi->active = NULL;
+	write_lease_db(&ifi->lease_db);
+
 	free(ifi->configured);
 	ifi->configured = NULL;
 	free(ifi->unwind_info);

@@ -1228,6 +1228,10 @@
 ./usr/share/man/man4/arm64
 ./usr/share/man/man4/arm64/agtimer.4
 ./usr/share/man/man4/arm64/ampintc.4
+./usr/share/man/man4/arm64/apldart.4
+./usr/share/man/man4/arm64/apldog.4
+./usr/share/man/man4/arm64/aplintc.4
+./usr/share/man/man4/arm64/aplpcie.4
 ./usr/share/man/man4/arm64/apm.4
 ./usr/share/man/man4/arm64/efi.4
 ./usr/share/man/man4/arm64/intro.4
@@ -2064,6 +2068,7 @@
 ./usr/share/man/man4/uvscom.4
 ./usr/share/man/man4/uwacom.4
 ./usr/share/man/man4/uxrcom.4
+./usr/share/man/man4/veb.4
 ./usr/share/man/man4/vether.4
 ./usr/share/man/man4/vga.4
 ./usr/share/man/man4/vgafb.4
@@ -2131,6 +2136,7 @@
 ./usr/share/man/man5/bsd.port.mk.5
 ./usr/share/man/man5/bsd.regress.mk.5
 ./usr/share/man/man5/bt.5
+./usr/share/man/man5/cargo-module.5
 ./usr/share/man/man5/changelist.5
 ./usr/share/man/man5/chio.conf.5
 ./usr/share/man/man5/core.5
@@ -2159,6 +2165,8 @@
 ./usr/share/man/man5/fstab.5
 ./usr/share/man/man5/genassym.cf.5
 ./usr/share/man/man5/gettytab.5
+./usr/share/man/man5/gnome-module.5
+./usr/share/man/man5/go-module.5
 ./usr/share/man/man5/group.5
 ./usr/share/man/man5/hostapd.conf.5
 ./usr/share/man/man5/hostname.if.5
@@ -2204,6 +2212,8 @@
 ./usr/share/man/man5/port-modules.5
 ./usr/share/man/man5/printcap.5
 ./usr/share/man/man5/protocols.5
+./usr/share/man/man5/python-module.5
+./usr/share/man/man5/qmake-module.5
 ./usr/share/man/man5/rad.conf.5
 ./usr/share/man/man5/radiusd.conf.5
 ./usr/share/man/man5/ranlib.5
@@ -2332,6 +2342,8 @@
 ./usr/share/man/man8/dev_mkdb.8
 ./usr/share/man/man8/dhclient.8
 ./usr/share/man/man8/dhcpd.8
+./usr/share/man/man8/dhcpleasectl.8
+./usr/share/man/man8/dhcpleased.8
 ./usr/share/man/man8/dhcrelay.8
 ./usr/share/man/man8/dhcrelay6.8
 ./usr/share/man/man8/disklabel.8
@@ -2526,6 +2538,7 @@
 ./usr/share/man/man8/release.8
 ./usr/share/man/man8/renice.8
 ./usr/share/man/man8/repquota.8
+./usr/share/man/man8/resolvd.8
 ./usr/share/man/man8/restore.8
 ./usr/share/man/man8/revnetgroup.8
 ./usr/share/man/man8/ripctl.8

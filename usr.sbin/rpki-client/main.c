@@ -1,4 +1,4 @@
-/*	$OpenBSD: main.c,v 1.103 2021/02/19 12:18:23 tb Exp $ */
+/*	$OpenBSD: main.c,v 1.106 2021/02/27 08:59:29 claudio Exp $ */
 /*
  * Copyright (c) 2019 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -297,7 +297,7 @@ repo_fetch(struct repo *rp)
 	 * will not build the destination for us.
 	 */
 
-	if (mkpath(cachefd, rp->local) == -1)
+	if (mkpathat(cachefd, rp->local) == -1)
 		err(1, "%s", rp->local);
 
 	logx("%s: pulling from network", rp->local);
@@ -941,8 +941,7 @@ main(int argc, char *argv[])
 			if (fchdir(cachefd) == -1)
 				err(1, "fchdir");
 
-			if (pledge("stdio rpath cpath proc exec unveil", NULL)
-			    == -1)
+			if (pledge("stdio rpath proc exec unveil", NULL) == -1)
 				err(1, "pledge");
 
 			proc_rsync(rsync_prog, bind_addr, fd[0]);
@@ -985,10 +984,10 @@ main(int argc, char *argv[])
 	while (entity_queue > 0 && !killme) {
 		pfd[0].events = POLLIN;
 		if (rsyncq.queued)
-			pfd[0].events = POLLOUT;
+			pfd[0].events |= POLLOUT;
 		pfd[1].events = POLLIN;
 		if (procq.queued)
-			pfd[1].events = POLLOUT;
+			pfd[1].events |= POLLOUT;
 
 		if ((c = poll(pfd, 2, INFTIM)) == -1) {
 			if (errno == EINTR)
