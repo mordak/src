@@ -1,4 +1,4 @@
-/*	$OpenBSD: engine.c,v 1.3 2021/02/28 15:26:26 florian Exp $	*/
+/*	$OpenBSD: engine.c,v 1.6 2021/03/01 15:56:31 florian Exp $	*/
 
 /*
  * Copyright (c) 2017, 2021 Florian Obser <florian@openbsd.org>
@@ -39,6 +39,7 @@
 #include <pwd.h>
 #include <signal.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -126,6 +127,8 @@ void			 state_transition(struct dhcpleased_iface *, enum
 void			 iface_timeout(int, short, void *);
 void			 request_dhcp_discover(struct dhcpleased_iface *);
 void			 request_dhcp_request(struct dhcpleased_iface *);
+void			 log_lease(struct dhcpleased_iface *, int);
+void			 log_rdns(struct dhcpleased_iface *, int);
 void			 send_configure_interface(struct dhcpleased_iface *);
 void			 send_rdns_proposal(struct dhcpleased_iface *);
 void			 send_deconfigure_interface(struct dhcpleased_iface *);
@@ -513,7 +516,6 @@ engine_update_iface(struct imsg_ifinfo *imsg_ifinfo)
 		memcpy(&iface->hw_address, &imsg_ifinfo->hw_address,
 		    sizeof(struct ether_addr));
 		LIST_INSERT_HEAD(&dhcpleased_interfaces, iface, entries);
-		parse_lease(iface, imsg_ifinfo);
 		need_refresh = 1;
 	} else {
 		if (memcmp(&iface->hw_address, &imsg_ifinfo->hw_address,
@@ -541,6 +543,9 @@ engine_update_iface(struct imsg_ifinfo *imsg_ifinfo)
 		return;
 
 	if (iface->running && LINK_STATE_IS_UP(iface->link_state)) {
+		if (iface->requested_ip.s_addr == INADDR_ANY)
+			parse_lease(iface, imsg_ifinfo);
+
 		if (iface->requested_ip.s_addr == INADDR_ANY)
 			state_transition(iface, IF_INIT);
 		else
@@ -570,8 +575,8 @@ remove_dhcpleased_iface(uint32_t if_index)
 	if (iface == NULL)
 		return;
 
-	send_deconfigure_interface(iface);
 	send_rdns_withdraw(iface);
+	send_deconfigure_interface(iface);
 	LIST_REMOVE(iface, entries);
 	evtimer_del(&iface->timer);
 	free(iface);
@@ -1021,11 +1026,8 @@ parse_dhcp(struct dhcpleased_iface *iface, struct imsg_dhcp *dhcp)
 		}
 
 		/* we have been told that our IP is inapropriate, delete now */
-		send_deconfigure_interface(iface);
 		send_rdns_withdraw(iface);
-		iface->server_identifier.s_addr = INADDR_ANY;
-		iface->requested_ip.s_addr = INADDR_ANY;
-		memset(iface->nameservers, 0, sizeof(iface->nameservers));
+		send_deconfigure_interface(iface);
 		state_transition(iface, IF_INIT);
 		break;
 	default:
@@ -1059,19 +1061,12 @@ state_transition(struct dhcpleased_iface *iface, enum if_state new_state)
 			break;
 		}
 		if (old_state == IF_DOWN) {
+			/* nameservers already withdrawn when if went down */
 			send_deconfigure_interface(iface);
-			iface->server_identifier.s_addr = INADDR_ANY;
-			iface->dhcp_server.s_addr = INADDR_ANY;
-			iface->requested_ip.s_addr = INADDR_ANY;
-			iface->mask.s_addr = INADDR_ANY;
-			iface->router.s_addr = INADDR_ANY;
-
 			/* nothing more to do until iface comes back */
 			iface->timo.tv_sec = -1;
 		} else {
 			send_rdns_withdraw(iface);
-			memset(iface->nameservers, 0,
-			    sizeof(iface->nameservers));
 			clock_gettime(CLOCK_MONOTONIC, &now);
 			timespecsub(&now, &iface->request_time, &res);
 			iface->timo.tv_sec = iface->lease_time - res.tv_sec;
@@ -1081,16 +1076,9 @@ state_transition(struct dhcpleased_iface *iface, enum if_state new_state)
 		break;
 	case IF_INIT:
 		if (old_state == IF_REBINDING) {
-			/*
-			 * XXX move to function, also is this the only
-			 * transition that needs delete?
-			 */
 			/* lease expired, delete IP */
-			send_deconfigure_interface(iface);
 			send_rdns_withdraw(iface);
-			iface->requested_ip.s_addr = INADDR_ANY;
-			memset(iface->nameservers, 0,
-			    sizeof(iface->nameservers));
+			send_deconfigure_interface(iface);
 		}
 		if (old_state == IF_INIT) {
 			if (iface->timo.tv_sec < MAX_EXP_BACKOFF)
@@ -1149,9 +1137,6 @@ state_transition(struct dhcpleased_iface *iface, enum if_state new_state)
 			iface->timo.tv_sec /= 2;
 		request_dhcp_request(iface);
 		break;
-	default:
-		fatal("%s: unhandled state: %s", __func__,
-		    if_state_name[new_state]);
 	}
 	log_debug("%s %s -> %s, timo: %lld", __func__, if_state_name[old_state],
 	    if_state_name[new_state], iface->timo.tv_sec);
@@ -1213,8 +1198,6 @@ iface_timeout(int fd, short events, void *arg)
 		else
 			state_transition(iface, IF_REBINDING);
 		break;
-	default:
-		break;
 	}
 }
 
@@ -1246,9 +1229,35 @@ request_dhcp_request(struct dhcpleased_iface *iface)
 }
 
 void
+log_lease(struct dhcpleased_iface *iface, int deconfigure)
+{
+	char	 hbuf_lease[INET_ADDRSTRLEN], hbuf_server[INET_ADDRSTRLEN];
+	char	 if_name[IF_NAMESIZE];
+
+	memset(if_name, 0, sizeof(if_name));
+
+	if (if_indextoname(iface->if_index, if_name) == 0)
+		if_name[0] = '?';
+	inet_ntop(AF_INET, &iface->requested_ip, hbuf_lease,
+	    sizeof(hbuf_lease));
+	inet_ntop(AF_INET, &iface->server_identifier, hbuf_server,
+	    sizeof(hbuf_server));
+
+
+	if (deconfigure)
+		log_info("deleting %s from %s (lease from %s)", hbuf_lease,
+		    if_name, hbuf_server);
+	else
+		log_info("adding %s to %s (lease from %s)", hbuf_lease,
+		    if_name, hbuf_server);
+}
+
+void
 send_configure_interface(struct dhcpleased_iface *iface)
 {
 	struct imsg_configure_interface	 imsg;
+
+	log_lease(iface, 0);
 
 	imsg.if_index = iface->if_index;
 	imsg.rdomain = iface->rdomain;
@@ -1264,6 +1273,8 @@ send_deconfigure_interface(struct dhcpleased_iface *iface)
 {
 	struct imsg_configure_interface	 imsg;
 
+	log_lease(iface, 1);
+
 	imsg.if_index = iface->if_index;
 	imsg.rdomain = iface->rdomain;
 	imsg.addr.s_addr = iface->requested_ip.s_addr;
@@ -1271,12 +1282,59 @@ send_deconfigure_interface(struct dhcpleased_iface *iface)
 	imsg.router.s_addr = iface->router.s_addr;
 	engine_imsg_compose_main(IMSG_DECONFIGURE_INTERFACE, 0, &imsg,
 	    sizeof(imsg));
+
+	iface->server_identifier.s_addr = INADDR_ANY;
+	iface->dhcp_server.s_addr = INADDR_ANY;
+	iface->requested_ip.s_addr = INADDR_ANY;
+	iface->mask.s_addr = INADDR_ANY;
+	iface->router.s_addr = INADDR_ANY;
+}
+
+void
+log_rdns(struct dhcpleased_iface *iface, int withdraw)
+{
+	int	 i;
+	char	 hbuf_rdns[INET_ADDRSTRLEN], hbuf_server[INET_ADDRSTRLEN];
+	char	 if_name[IF_NAMESIZE], *rdns_buf = NULL, *tmp_buf;
+
+	memset(if_name, 0, sizeof(if_name));
+
+	if (if_indextoname(iface->if_index, if_name) == 0)
+		if_name[0] = '?';
+
+	inet_ntop(AF_INET, &iface->server_identifier, hbuf_server,
+	    sizeof(hbuf_server));
+
+	for (i = 0; i < MAX_RDNS_COUNT && iface->nameservers[i].s_addr !=
+		 INADDR_ANY; i++) {
+		inet_ntop(AF_INET, &iface->nameservers[i], hbuf_rdns,
+		    sizeof(hbuf_rdns));
+		tmp_buf = rdns_buf;
+		if (asprintf(&rdns_buf, "%s %s", tmp_buf ? tmp_buf : "",
+		    hbuf_rdns) < 0) {
+			rdns_buf = NULL;
+			break;
+		}
+		free(tmp_buf);
+	}
+
+	if (rdns_buf != NULL) {
+		if (withdraw)
+			log_info("deleting nameservers%s (lease from %s on %s)",
+			    rdns_buf, hbuf_server, if_name);
+		else
+			log_info("adding nameservers%s (lease from %s on %s)",
+			    rdns_buf, hbuf_server, if_name);
+		free(rdns_buf);
+	}
 }
 
 void
 send_rdns_proposal(struct dhcpleased_iface *iface)
 {
 	struct imsg_propose_rdns	 imsg;
+
+	log_rdns(iface, 0);
 
 	memset(&imsg, 0, sizeof(imsg));
 
@@ -1295,11 +1353,14 @@ send_rdns_withdraw(struct dhcpleased_iface *iface)
 {
 	struct imsg_propose_rdns	 imsg;
 
+	log_rdns(iface, 1);
+
 	memset(&imsg, 0, sizeof(imsg));
 
 	imsg.if_index = iface->if_index;
 	imsg.rdomain = iface->rdomain;
 	engine_imsg_compose_main(IMSG_WITHDRAW_RDNS, 0, &imsg, sizeof(imsg));
+	memset(iface->nameservers, 0, sizeof(iface->nameservers));
 }
 
 void
