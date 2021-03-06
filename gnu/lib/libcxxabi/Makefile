@@ -20,7 +20,7 @@ CXXINCLUDEDIR=	/usr/include/c++/v1
 LIB=		c++abi
 
 
-SRCS+=	cxa_aux_runtime.cpp \
+SRCS+=		cxa_aux_runtime.cpp \
 		cxa_default_handlers.cpp \
 		cxa_demangle.cpp \
 		cxa_exception_storage.cpp \
