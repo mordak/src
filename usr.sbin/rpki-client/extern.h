@@ -1,4 +1,4 @@
-/*	$OpenBSD: extern.h,v 1.47 2021/02/22 09:46:05 claudio Exp $ */
+/*	$OpenBSD: extern.h,v 1.53 2021/03/05 17:15:19 claudio Exp $ */
 /*
  * Copyright (c) 2019 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -354,6 +354,8 @@ int		 valid_ta(const char *, struct auth_tree *,
 int		 valid_cert(const char *, struct auth_tree *,
 		    const struct cert *);
 int		 valid_roa(const char *, struct auth_tree *, struct roa *);
+int		 valid_filehash(const char *, const char *, size_t);
+int		 valid_uri(const char *, size_t, const char *);
 
 /* Working with CMS files. */
 
@@ -369,7 +371,7 @@ int		 ip_addr_parse(const ASN1_BIT_STRING *,
 void		 ip_addr_print(const struct ip_addr *, enum afi, char *,
 			size_t);
 void		 ip_addr_buffer(struct ibuf *, const struct ip_addr *);
-void		 ip_addr_range_buffer(struct ibuf *, 
+void		 ip_addr_range_buffer(struct ibuf *,
 			const struct ip_addr_range *);
 void		 ip_addr_read(int, struct ip_addr *);
 void		 ip_addr_range_read(int, struct ip_addr_range *);
@@ -399,6 +401,10 @@ void		 proc_parser(int) __attribute__((noreturn));
 char		*rsync_base_uri(const char *);
 void		 proc_rsync(char *, char *, int) __attribute__((noreturn));
 
+/* Http-specific. */
+
+void		 proc_http(char *, int);
+
 /* Logging (though really used for OpenSSL errors). */
 
 void		 cryptowarnx(const char *, ...)
@@ -417,6 +423,7 @@ void		 io_str_buffer(struct ibuf *, const char *);
 void		 io_simple_read(int, void *, size_t);
 void		 io_buf_read_alloc(int, void **, size_t *);
 void		 io_str_read(int, char **);
+int		 io_recvfd(int, void *, size_t);
 
 /* X509 helpers. */
 
@@ -435,7 +442,6 @@ extern int	 outformats;
 #define FORMAT_BIRD	0x02
 #define FORMAT_CSV	0x04
 #define FORMAT_JSON	0x08
-extern char*	 outputdir;
 
 int		 outputfiles(struct vrp_tree *v, struct stats *);
 int		 outputheader(FILE *, struct stats *);
@@ -449,7 +455,7 @@ int		 output_json(FILE *, struct vrp_tree *, struct stats *);
 void	logx(const char *fmt, ...)
 		    __attribute__((format(printf, 1, 2)));
 
-int	mkpathat(int, const char *);
+int	mkpath(const char *);
 
 #define		RPKI_PATH_OUT_DIR	"/var/db/rpki-client"
 #define		RPKI_PATH_BASE_DIR	"/var/cache/rpki-client"

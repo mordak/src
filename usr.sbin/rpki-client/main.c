@@ -1,4 +1,4 @@
-/*	$OpenBSD: main.c,v 1.106 2021/02/27 08:59:29 claudio Exp $ */
+/*	$OpenBSD: main.c,v 1.114 2021/03/04 15:44:13 tb Exp $ */
 /*
  * Copyright (c) 2019 Kristaps Dzonsons <kristaps@bsd.lv>
  *
@@ -51,10 +51,12 @@
 /*
  * An rsync repository.
  */
+#define REPO_MAX_URI	2
 struct	repo {
 	char		*repouri;	/* CA repository base URI */
 	char		*local;		/* local path name */
-	char		*uris[2];	/* URIs to fetch from */
+	char		*temp;		/* temporary file / dir */
+	char		*uris[REPO_MAX_URI];	/* URIs to fetch from */
 	size_t		 id;		/* identifier (array index) */
 	int		 uriidx;	/* which URI is fetched */
 	int		 loaded;	/* whether loaded or not */
@@ -91,8 +93,8 @@ RB_HEAD(filepath_tree, filepath);
 RB_PROTOTYPE(filepath_tree, filepath, entry, filepathcmp);
 
 static struct filepath_tree	fpt = RB_INITIALIZER(&fpt);
-static struct msgbuf		procq, rsyncq;
-static int			cachefd;
+static struct msgbuf		procq, rsyncq, httpq;
+static int			cachefd, outdirfd;
 
 const char	*bird_tablename = "ROAS";
 
@@ -100,6 +102,9 @@ int	verbose;
 int	noop;
 
 struct stats	 stats;
+
+static void	 repo_fetch(struct repo *);
+static char	*ta_filename(const struct repo *, int);
 
 /*
  * Log a message to stderr if and only if "verbose" is non-zero.
@@ -227,7 +232,7 @@ entityq_add(struct entityq *q, char *file, enum rtype type,
 	struct entity	*p;
 
 	if ((p = calloc(1, sizeof(struct entity))) == NULL)
-		err(1, "calloc");
+		err(1, NULL);
 
 	p->type = type;
 	p->file = file;
@@ -236,12 +241,12 @@ entityq_add(struct entityq *q, char *file, enum rtype type,
 	if (p->has_pkey) {
 		p->pkeysz = pkeysz;
 		if ((p->pkey = malloc(pkeysz)) == NULL)
-			err(1, "malloc");
+			err(1, NULL);
 		memcpy(p->pkey, pkey, pkeysz);
 	}
 	if (descr != NULL)
 		if ((p->descr = strdup(descr)) == NULL)
-			err(1, "strdup");
+			err(1, NULL);
 
 	filepath_add(file);
 
@@ -270,12 +275,74 @@ repo_alloc(void)
 	rt.repos = recallocarray(rt.repos, rt.reposz, rt.reposz + 1,
 	    sizeof(struct repo));
 	if (rt.repos == NULL)
-		err(1, "recallocarray");
+		err(1, NULL);
 
 	rp = &rt.repos[rt.reposz++];
 	rp->id = rt.reposz - 1;
 
 	return rp;
+}
+
+static void
+http_ta_fetch(struct repo *rp)
+{
+	struct ibuf	*b;
+	int		 filefd;
+
+	rp->temp = ta_filename(rp, 1);
+	
+	filefd = mkostemp(rp->temp, O_CLOEXEC);
+	if (filefd == -1)
+		err(1, "mkostemp: %s", rp->temp);
+	if (fchmod(filefd, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) == -1)
+		warn("fchmod: %s", rp->temp);
+	
+	if ((b = ibuf_dynamic(256, UINT_MAX)) == NULL)
+		err(1, NULL);
+	io_simple_buffer(b, &rp->id, sizeof(rp->id));
+	io_str_buffer(b, rp->uris[rp->uriidx]);
+	/* TODO last modified time */
+	io_str_buffer(b, NULL);
+	/* pass file as fd */
+	b->fd = filefd;
+	ibuf_close(&httpq, b);
+}
+
+static int
+http_done(struct repo *rp, int ok)
+{
+	if (rp->repouri == NULL) {
+		/* Move downloaded TA file into place, or unlink on failure. */
+		if (ok) {
+			char *file;
+
+			file = ta_filename(rp, 0);
+			if (renameat(cachefd, rp->temp, cachefd, file) == -1)
+				warn("rename to %s", file);
+		} else {
+			if (unlinkat(cachefd, rp->temp, 0) == -1)
+				warn("unlink %s", rp->temp);
+		}
+		free(rp->temp);
+		rp->temp = NULL;
+	}
+
+	if (!ok && rp->uriidx < REPO_MAX_URI - 1 &&
+	    rp->uris[rp->uriidx + 1] != NULL) {
+		logx("%s: load from network failed, retry", rp->local);
+
+		rp->uriidx++;
+		repo_fetch(rp);
+		return 0;
+	}
+
+	if (ok)
+		logx("%s: loaded from network", rp->local);
+	else
+		logx("%s: load from network failed, "
+		    "fallback to cache", rp->local);
+
+	return 1;
 }
 
 static void
@@ -293,20 +360,31 @@ repo_fetch(struct repo *rp)
 
 	/*
 	 * Create destination location.
-	 * Build up the tree to this point because GPL rsync(1)
-	 * will not build the destination for us.
+	 * Build up the tree to this point.
 	 */
 
-	if (mkpathat(cachefd, rp->local) == -1)
+	if (mkpath(rp->local) == -1)
 		err(1, "%s", rp->local);
 
-	logx("%s: pulling from network", rp->local);
-	if ((b = ibuf_dynamic(256, UINT_MAX)) == NULL)
-		err(1, NULL);
-	io_simple_buffer(b, &rp->id, sizeof(rp->id));
-	io_str_buffer(b, rp->local);
-	io_str_buffer(b, rp->uris[0]);
-	ibuf_close(&rsyncq, b);
+	logx("%s: pulling from %s", rp->local, rp->uris[rp->uriidx]);
+
+	if (strncasecmp(rp->uris[rp->uriidx], "rsync://", 8) == 0) {
+		if ((b = ibuf_dynamic(256, UINT_MAX)) == NULL)
+			err(1, NULL);
+		io_simple_buffer(b, &rp->id, sizeof(rp->id));
+		io_str_buffer(b, rp->local);
+		io_str_buffer(b, rp->uris[rp->uriidx]);
+		ibuf_close(&rsyncq, b);
+	} else {
+		/*
+		 * Two cases for https. TA files load directly while
+		 * for RRDP XML files are downloaded and parsed to build
+		 * the repo. TA repos have a NULL repouri.
+		 */
+		if (rp->repouri == NULL) {
+			http_ta_fetch(rp);
+		}
+	}
 }
 
 /*
@@ -320,7 +398,7 @@ ta_lookup(const struct tal *tal)
 	size_t		i, j;
 
 	if (asprintf(&local, "ta/%s", tal->descr) == -1)
-		err(1, "asprinf");
+		err(1, NULL);
 
 	/* Look up in repository table. (Lookup should actually fail here) */
 	for (i = 0; i < rt.reposz; i++) {
@@ -333,13 +411,11 @@ ta_lookup(const struct tal *tal)
 	rp = repo_alloc();
 	rp->local = local;
 	for (i = 0, j = 0; i < tal->urisz && j < 2; i++) {
-		if (strncasecmp(tal->uri[i], "rsync://", 8) != 0)
-			continue;	/* ignore non rsync URI for now */
 		if ((rp->uris[j++] = strdup(tal->uri[i])) == NULL)
-			err(1, "strdup");
+			err(1, NULL);
 	}
 	if (j == 0)
-		errx(1, "TAL file has no rsync:// URI");
+		errx(1, "TAL %s has no URI", tal->descr);
 
 	repo_fetch(rp);
 	return rp;
@@ -371,12 +447,29 @@ repo_lookup(const char *uri)
 	rp->repouri = repo;
 	local = strchr(repo, ':') + strlen("://");
 	if (asprintf(&rp->local, "rsync/%s", local) == -1)
-		err(1, "asprintf");
+		err(1, NULL);
 	if ((rp->uris[0] = strdup(repo)) == NULL)
-		err(1, "strdup");
+		err(1, NULL);
 
 	repo_fetch(rp);
 	return rp;
+}
+
+static char *
+ta_filename(const struct repo *repo, int temp)
+{
+	const char *file;
+	char *nfile;
+
+	/* does not matter which URI, all end with same filename */
+	file = strrchr(repo->uris[0], '/');
+	assert(file);
+
+	if (asprintf(&nfile, "%s%s%s", repo->local, file,
+	    temp ? ".XXXXXXXX": "") == -1)
+		err(1, NULL);
+
+	return nfile;
 }
 
 /*
@@ -392,7 +485,7 @@ repo_filename(const struct repo *repo, const char *uri)
 	uri += strlen(repo->repouri) + 1;	/* skip base and '/' */
 
 	if (asprintf(&nfile, "%s/%s", repo->local, uri) == -1)
-		err(1, "asprintf");
+		err(1, NULL);
 	return nfile;
 }
 
@@ -411,7 +504,7 @@ queue_add_from_mft(struct entityq *q, const char *mft,
 	assert(cp != NULL);
 	assert(cp - mft < INT_MAX);
 	if (asprintf(&nfile, "%.*s/%s", (int)(cp - mft), mft, file->file) == -1)
-		err(1, "asprintf");
+		err(1, NULL);
 
 	/*
 	 * Since we're from the same directory as the MFT file, we know
@@ -493,16 +586,17 @@ queue_add_tal(struct entityq *q, const char *file)
 	char	*nfile, *buf;
 
 	if ((nfile = strdup(file)) == NULL)
-		err(1, "strdup");
+		err(1, NULL);
 	buf = tal_read_file(file);
 
 	/* Record tal for later reporting */
-	if (stats.talnames == NULL)
-		stats.talnames = strdup(file);
-	else {
+	if (stats.talnames == NULL) {
+		if ((stats.talnames = strdup(file)) == NULL)
+			err(1, NULL);
+	} else {
 		char *tmp;
 		if (asprintf(&tmp, "%s %s", stats.talnames, file) == -1)
-			err(1, "asprintf");
+			err(1, NULL);
 		free(stats.talnames);
 		stats.talnames = tmp;
 	}
@@ -521,18 +615,13 @@ queue_add_from_tal(struct entityq *q, const struct tal *tal)
 {
 	char			*nfile;
 	const struct repo	*repo;
-	const char		*uri;
 
 	assert(tal->urisz);
 
 	/* Look up the repository. */
 	repo = ta_lookup(tal);
 
-	uri = strrchr(repo->uris[0], '/');
-	assert(uri);
-	if (asprintf(&nfile, "%s/%s", repo->local, uri + 1) == -1)
-		err(1, "asprintf");
-
+	nfile = ta_filename(repo, 0);
 	entityq_add(q, nfile, RTYPE_CER, repo, tal->pkey,
 	    tal->pkeysz, tal->descr);
 }
@@ -672,7 +761,7 @@ tal_load_default(const char *tals[], size_t max)
 			err(1, "too many tal files found in %s",
 			    confdir);
 		if (asprintf(&path, "%s/%s", confdir, dp->d_name) == -1)
-			err(1, "asprintf");
+			err(1, NULL);
 		tals[s++] = path;
 	}
 	closedir (dirp);
@@ -686,25 +775,20 @@ add_to_del(char **del, size_t *dsz, char *file)
 
 	del = reallocarray(del, i + 1, sizeof(*del));
 	if (del == NULL)
-		err(1, "reallocarray");
-	del[i] = strdup(file);
-	if (del[i] == NULL)
-		err(1, "strdup");
+		err(1, NULL);
+	if ((del[i] = strdup(file)) == NULL)
+		err(1, NULL);
 	*dsz = i + 1;
 	return del;
 }
 
 static size_t
-repo_cleanup(int dirfd)
+repo_cleanup(void)
 {
 	size_t i, delsz = 0;
 	char *argv[2], **del = NULL;
 	FTS *fts;
 	FTSENT *e;
-
-	/* change working directory to the cache directory */
-	if (fchdir(dirfd) == -1)
-		err(1, "fchdir");
 
 	for (i = 0; i < rt.reposz; i++) {
 		if (asprintf(&argv[0], "%s", rt.repos[i].local) == -1)
@@ -771,18 +855,18 @@ suicide(int sig __attribute__((unused)))
 int
 main(int argc, char *argv[])
 {
-	int		 rc = 1, c, proc, st, rsync,
+	int		 rc = 1, c, st, proc, rsync, http,
 			 fl = SOCK_STREAM | SOCK_CLOEXEC;
 	size_t		 i, outsz = 0, talsz = 0;
-	pid_t		 procpid, rsyncpid;
+	pid_t		 procpid, rsyncpid, httppid;
 	int		 fd[2];
 	struct entityq	 q;
-	struct pollfd	 pfd[2];
+	struct pollfd	 pfd[3];
 	struct roa	**out = NULL;
 	char		*rsync_prog = "openrsync";
 	char		*bind_addr = NULL;
-	const char	*cachedir = NULL, *errs;
-	const char	*tals[TALSZ_MAX];
+	const char	*cachedir = NULL, *outputdir = NULL;
+	const char	*tals[TALSZ_MAX], *errs;
 	struct vrp_tree	 v = RB_INITIALIZER(&v);
 	struct rusage	ru;
 	struct timeval	start_time, now_time;
@@ -805,7 +889,8 @@ main(int argc, char *argv[])
 	cachedir = RPKI_PATH_BASE_DIR;
 	outputdir = RPKI_PATH_OUT_DIR;
 
-	if (pledge("stdio rpath wpath cpath fattr proc exec unveil", NULL) == -1)
+	if (pledge("stdio rpath wpath cpath inet fattr dns sendfd recvfd "
+	    "proc exec unveil", NULL) == -1)
 		err(1, "pledge");
 
 	while ((c = getopt(argc, argv, "b:Bcd:e:jnos:t:T:v")) != -1)
@@ -879,6 +964,8 @@ main(int argc, char *argv[])
 
 	if ((cachefd = open(cachedir, O_RDONLY, 0)) == -1)
 		err(1, "cache directory %s", cachedir);
+	if ((outdirfd = open(outputdir, O_RDONLY, 0)) == -1)
+		err(1, "output directory %s", outputdir);
 
 	if (outformats == 0)
 		outformats = FORMAT_OPENBGPD;
@@ -889,6 +976,10 @@ main(int argc, char *argv[])
 		err(1, "no TAL files found in %s", "/etc/rpki");
 
 	TAILQ_INIT(&q);
+
+	/* change working directory to the cache directory */
+	if (fchdir(cachefd) == -1)
+		err(1, "fchdir");
 
 	/*
 	 * Create the file reader as a jailed child process.
@@ -904,17 +995,13 @@ main(int argc, char *argv[])
 	if (procpid == 0) {
 		close(fd[1]);
 
-		/* change working directory to the cache directory */
-		if (fchdir(cachefd) == -1)
-			err(1, "fchdir");
-
 		/* Only allow access to the cache directory. */
-		if (unveil(cachedir, "r") == -1)
+		if (unveil(".", "r") == -1)
 			err(1, "%s: unveil", cachedir);
 		if (pledge("stdio rpath", NULL) == -1)
 			err(1, "pledge");
 		proc_parser(fd[0]);
-		/* NOTREACHED */
+		errx(1, "parser process returned");
 	}
 
 	close(fd[0]);
@@ -937,15 +1024,11 @@ main(int argc, char *argv[])
 			close(proc);
 			close(fd[1]);
 
-			/* change working directory to the cache directory */
-			if (fchdir(cachefd) == -1)
-				err(1, "fchdir");
-
 			if (pledge("stdio rpath proc exec unveil", NULL) == -1)
 				err(1, "pledge");
 
 			proc_rsync(rsync_prog, bind_addr, fd[0]);
-			/* NOTREACHED */
+			errx(1, "rsync process returned");
 		}
 
 		close(fd[0]);
@@ -953,15 +1036,48 @@ main(int argc, char *argv[])
 	} else
 		rsync = -1;
 
-	assert(rsync != proc);
+	/*
+	 * Create a process that will fetch data via https.
+	 * With every request the http process receives a file descriptor
+	 * where the data should be written to.
+	 */
 
-	if (pledge("stdio rpath wpath cpath fattr", NULL) == -1)
+	if (!noop) {
+		if (socketpair(AF_UNIX, fl, 0, fd) == -1)
+			err(1, "socketpair");
+		if ((httppid = fork()) == -1)
+			err(1, "fork");
+
+		if (httppid == 0) {
+			close(proc);
+			close(rsync);
+			close(fd[1]);
+
+			/* change working directory to the cache directory */
+			if (fchdir(cachefd) == -1)
+				err(1, "fchdir");
+
+			if (pledge("stdio rpath inet dns recvfd", NULL) == -1)
+				err(1, "pledge");
+
+			proc_http(bind_addr, fd[0]);
+			errx(1, "http process returned");
+		}
+
+		close(fd[0]);
+		http = fd[1];
+	} else
+		http = -1;
+
+	if (pledge("stdio rpath wpath cpath fattr sendfd", NULL) == -1)
 		err(1, "pledge");
 
 	msgbuf_init(&procq);
 	msgbuf_init(&rsyncq);
+	msgbuf_init(&httpq);
 	procq.fd = proc;
 	rsyncq.fd = rsync;
+	httpq.fd = http;
 
 	/*
 	 * The main process drives the top-down scan to leaf ROAs using
@@ -971,6 +1087,7 @@ main(int argc, char *argv[])
 
 	pfd[0].fd = rsync;
 	pfd[1].fd = proc;
+	pfd[2].fd = http;
 
 	/*
 	 * Prime the process with our TAL file.
@@ -988,18 +1105,23 @@ main(int argc, char *argv[])
 		pfd[1].events = POLLIN;
 		if (procq.queued)
 			pfd[1].events |= POLLOUT;
+		pfd[2].events = POLLIN;
+		if (httpq.queued)
+			pfd[2].events |= POLLOUT;
 
-		if ((c = poll(pfd, 2, INFTIM)) == -1) {
+		if ((c = poll(pfd, 3, INFTIM)) == -1) {
 			if (errno == EINTR)
 				continue;
 			err(1, "poll");
 		}
 
 		if ((pfd[0].revents & (POLLERR|POLLNVAL)) ||
-		    (pfd[1].revents & (POLLERR|POLLNVAL)))
+		    (pfd[1].revents & (POLLERR|POLLNVAL)) ||
+		    (pfd[2].revents & (POLLERR|POLLNVAL)))
 			errx(1, "poll: bad fd");
 		if ((pfd[0].revents & POLLHUP) ||
-		    (pfd[1].revents & POLLHUP))
+		    (pfd[1].revents & POLLHUP) ||
+		    (pfd[2].revents & POLLHUP))
 			errx(1, "poll: hangup");
 
 		if (pfd[0].revents & POLLOUT) {
@@ -1018,9 +1140,18 @@ main(int argc, char *argv[])
 				err(1, "write");
 			}
 		}
+		if (pfd[2].revents & POLLOUT) {
+			switch (msgbuf_write(&httpq)) {
+			case 0:
+				errx(1, "write: connection closed");
+			case -1:
+				err(1, "write");
+			}
+		}
+
 
 		/*
-		 * Check the rsync process.
+		 * Check the rsync and http process.
 		 * This means that one of our modules has completed
 		 * downloading and we can flush the module requests into
 		 * the parser process.
@@ -1033,15 +1164,29 @@ main(int argc, char *argv[])
 			assert(i < rt.reposz);
 
 			assert(!rt.repos[i].loaded);
-			rt.repos[i].loaded = 1;
 			if (ok)
 				logx("%s: loaded from network",
 				    rt.repos[i].local);
 			else
 				logx("%s: load from network failed, "
 				    "fallback to cache", rt.repos[i].local);
+			rt.repos[i].loaded = 1;
 			stats.repos++;
 			entityq_flush(&q, &rt.repos[i]);
+		}
+
+		if ((pfd[2].revents & POLLIN)) {
+			int ok;
+			io_simple_read(http, &i, sizeof(size_t));
+			io_simple_read(http, &ok, sizeof(ok));
+			assert(i < rt.reposz);
+
+			assert(!rt.repos[i].loaded);
+			if (http_done(&rt.repos[i], ok)) {
+				rt.repos[i].loaded = 1;
+				stats.repos++;
+				entityq_flush(&q, &rt.repos[i]);
+			}
 		}
 
 		/*
@@ -1072,6 +1217,7 @@ main(int argc, char *argv[])
 
 	close(proc);
 	close(rsync);
+	close(http);
 
 	if (waitpid(procpid, &st, 0) == -1)
 		err(1, "waitpid");
@@ -1086,7 +1232,17 @@ main(int argc, char *argv[])
 			warnx("rsync process exited abnormally");
 			rc = 1;
 		}
+
+		if (waitpid(httppid, &st, 0) == -1)
+			err(1, "waitpid");
+		if (!WIFEXITED(st) || WEXITSTATUS(st) != 0) {
+			warnx("http process exited abnormally");
+			rc = 1;
+		}
 	}
+
+	stats.del_files = repo_cleanup();
+
 	gettimeofday(&now_time, NULL);
 	timersub(&now_time, &start_time, &stats.elapsed_time);
 	if (getrusage(RUSAGE_SELF, &ru) == 0) {
@@ -1098,10 +1254,13 @@ main(int argc, char *argv[])
 		timeradd(&stats.system_time, &ru.ru_stime, &stats.system_time);
 	}
 
+	/* change working directory to the cache directory */
+	if (fchdir(outdirfd) == -1)
+		err(1, "fchdir output dir");
+
 	if (outputfiles(&v, &stats))
 		rc = 1;
 
-	stats.del_files = repo_cleanup(cachefd);
 
 	logx("Route Origin Authorizations: %zu (%zu failed parse, %zu invalid)",
 	    stats.roas, stats.roas_fail, stats.roas_invalid);
@@ -1120,6 +1279,7 @@ main(int argc, char *argv[])
 	for (i = 0; i < rt.reposz; i++) {
 		free(rt.repos[i].repouri);
 		free(rt.repos[i].local);
+		free(rt.repos[i].temp);
 		free(rt.repos[i].uris[0]);
 		free(rt.repos[i].uris[1]);
 	}

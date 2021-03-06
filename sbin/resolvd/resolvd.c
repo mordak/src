@@ -1,3 +1,4 @@
+/*	$OpenBSD: resolvd.c,v 1.10 2021/03/03 09:32:11 kn Exp $	*/
 /*
  * Copyright (c) 2021 Florian Obser <florian@openbsd.org>
  * Copyright (c) 2021 Theo de Raadt <deraadt@openbsd.org>
@@ -24,6 +25,7 @@
 #include <sys/un.h>
 
 #include <arpa/inet.h>
+#include <netinet/in.h>
 #include <net/if.h>
 #include <net/route.h>
 
@@ -40,11 +42,12 @@
 
 #define	ROUTE_SOCKET_BUF_SIZE	16384
 #define	ASR_MAXNS		10
+#ifndef SMALL
 #define	_PATH_UNWIND_SOCKET	"/dev/unwind.sock"
+#endif
 #define	_PATH_RESCONF		"/etc/resolv.conf"
 #define	_PATH_RESCONF_NEW	"/etc/resolv.conf.new"
 #define _PATH_LOCKFILE		"/var/run/resolvd.lock"
-#define	STARTUP_WAIT_TIMO	1
 
 #ifndef nitems
 #define	nitems(_a) (sizeof((_a)) / sizeof((_a)[0]))
@@ -160,7 +163,7 @@ main(int argc, char *argv[])
 	int			 rtfilter, nready, lockfd;
 	struct kevent		 kev[3];
 #ifndef SMALL
-	int			 unwindsock;
+	int			 unwindsock = -1;
 #endif
 
 	while ((ch = getopt(argc, argv, "dv")) != -1) {
@@ -213,10 +216,14 @@ main(int argc, char *argv[])
 
 	solicit_dns_proposals(routesock);
 
-	if (unveil("/etc", "rwc") == -1)
-		lerr(1, "unveil /etc");
+	if (unveil(_PATH_RESCONF, "rwc") == -1)
+		lerr(1, "unveil " _PATH_RESCONF);
+	if (unveil(_PATH_RESCONF_NEW, "rwc") == -1)
+		lerr(1, "unveil " _PATH_RESCONF_NEW);
+#ifndef SMALL
 	if (unveil(_PATH_UNWIND_SOCKET, "r") == -1)
-		lerr(1, "unveil" _PATH_UNWIND_SOCKET);
+		lerr(1, "unveil " _PATH_UNWIND_SOCKET);
+#endif
 
 	if (pledge("stdio unix rpath wpath cpath", NULL) == -1)
 		lerr(1, "pledge");
@@ -276,7 +283,7 @@ main(int argc, char *argv[])
 		for (i = 0; i < nready; i++) {
 			unsigned short fflags = kev[i].fflags;
 
-			switch ((int)kev[i].udata) {
+			switch ((int)(long)kev[i].udata) {
 			case KQ_ROUTE:
 				route_receive(routesock);
 				break;

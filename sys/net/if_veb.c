@@ -1,4 +1,4 @@
-/*	$OpenBSD: if_veb.c,v 1.12 2021/02/26 01:57:20 dlg Exp $ */
+/*	$OpenBSD: if_veb.c,v 1.15 2021/03/05 06:44:09 dlg Exp $ */
 
 /*
  * Copyright (c) 2021 David Gwynne <dlg@openbsd.org>
@@ -129,7 +129,6 @@ struct veb_port {
 	struct ether_brport		 p_brport;
 
 	unsigned int			 p_link_state;
-	unsigned int			 p_span;
 	unsigned int			 p_bif_flags;
 	uint32_t			 p_protected;
 
@@ -335,7 +334,7 @@ veb_clone_destroy(struct ifnet *ifp)
 }
 
 static struct mbuf *
-veb_span_input(struct ifnet *ifp0, struct mbuf *m, void *brport)
+veb_span_input(struct ifnet *ifp0, struct mbuf *m, uint64_t dst, void *brport)
 {
 	m_freem(m);
 	return (NULL);
@@ -915,13 +914,13 @@ drop:
 }
 
 static struct mbuf *
-veb_port_input(struct ifnet *ifp0, struct mbuf *m, void *brport)
+veb_port_input(struct ifnet *ifp0, struct mbuf *m, uint64_t dst, void *brport)
 {
 	struct veb_port *p = brport;
 	struct veb_softc *sc = p->p_veb;
 	struct ifnet *ifp = &sc->sc_if;
 	struct ether_header *eh;
-	uint64_t src, dst;
+	uint64_t src;
 #if NBPFILTER > 0
 	caddr_t if_bpf;
 #endif
@@ -936,7 +935,6 @@ veb_port_input(struct ifnet *ifp0, struct mbuf *m, void *brport)
 
 	eh = mtod(m, struct ether_header *);
 	src = ether_addr_to_e64((struct ether_addr *)eh->ether_shost);
-	dst = ether_addr_to_e64((struct ether_addr *)eh->ether_dhost);
 
 	/* Is this a MAC Bridge component Reserved address? */
 	if (ETH64_IS_8021_RSVD(dst)) {
@@ -1794,8 +1792,9 @@ veb_p_ioctl(struct ifnet *ifp0, u_long cmd, caddr_t data)
 	KASSERTMSG(eb != NULL,
 	    "%s: %s called without an ether_brport set",
 	    ifp0->if_xname, __func__);
-	KASSERTMSG(eb->eb_input == veb_port_input,
-	    "%s: %s called, but eb_input seems wrong (%p != veb_port_input())",
+	KASSERTMSG((eb->eb_input == veb_port_input) ||
+	    (eb->eb_input == veb_span_input),
+	    "%s called %s, but eb_input (%p) seems wrong",
 	    ifp0->if_xname, __func__, eb->eb_input);
 
 	p = eb->eb_port;
@@ -1861,7 +1860,7 @@ veb_p_dtor(struct veb_softc *sc, struct veb_port *p, const char *op)
 	if_detachhook_del(ifp0, &p->p_dtask);
 	if_linkstatehook_del(ifp0, &p->p_ltask);
 
-	if (p->p_span) {
+	if (ISSET(p->p_bif_flags, IFBIF_SPAN)) {
 		port_list = &sc->sc_spans;
 	} else {
 		if (ifpromisc(ifp0, 0) != 0) {
@@ -2148,6 +2147,9 @@ vport_enqueue(struct ifnet *ifp, struct mbuf *m)
 	smr_read_enter();
 	eb = SMR_PTR_GET(&ac->ac_brport);
 	if (eb != NULL) {
+		struct ether_header *eh;
+		uint64_t dst;
+
 		counters_pkt(ifp->if_counters, ifc_opackets, ifc_obytes,
 		    m->m_pkthdr.len);
 
@@ -2157,7 +2159,9 @@ vport_enqueue(struct ifnet *ifp, struct mbuf *m)
 			bpf_mtap_ether(if_bpf, m, BPF_DIRECTION_OUT);
 #endif
 
-		m = (*eb->eb_input)(ifp, m, eb->eb_port);
+		eh = mtod(m, struct ether_header *);
+		dst = ether_addr_to_e64((struct ether_addr *)eh->ether_dhost);
+		m = (*eb->eb_input)(ifp, m, dst, eb->eb_port);
 
 		error = 0;
 	}
