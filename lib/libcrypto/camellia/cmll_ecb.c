@@ -49,7 +49,6 @@
  *
  */
 
-#include <sys/cdefs.h>
 #include <openssl/camellia.h>
 #include "cmll_locl.h"
 
