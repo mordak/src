@@ -58,3 +58,4 @@ SRCS+=	AArch64A57FPLoadBalancing.cpp \
 	AArch64SIMDInstrOpt.cpp
 
 .PATH:	${.CURDIR}/../../../llvm/llvm/lib/Target/AArch64
+.PATH:	${.CURDIR}/../../../llvm/llvm/lib/Target/AArch64/GISel
